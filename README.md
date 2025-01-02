@@ -9,3 +9,6 @@ All the code I present here is based on code I've used in multip[le producction 
 
 ## Windows Imaging
 Windows Imaging standardizaion.
+
+## UEFI Fix
+MS Certificate revocation fix for UEFI systems requiring the BootHole fix.
