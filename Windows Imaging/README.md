@@ -7,6 +7,6 @@ Build the lab environment, installs the drivers and builds the ISO. Lab file are
 Full-Automation is pending.
 
 # Win11Auto.ps1
-Post-Install code to configure the local system to the desire configurations
+Post-Install code to configure the local system to the desired configurations
 
 Full-Automation is pending.
