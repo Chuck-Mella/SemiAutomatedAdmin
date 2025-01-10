@@ -11,7 +11,7 @@ Convert account names to SIDs and vice-versa.
 Functions for calculating Feder holidays. 
 
 ## Mime-Conversion.ps1
-Functions for Encoiding|Decodinng files to Mime For emailing and code to determine a files mime-type.
+Functions for Encoiding|Decodinng files to Mime For emailing and code to determine a file's mime-type.
 
 ## SimpleEncryption.ps1
 Various code/text encryption tools (toying around stuff).
