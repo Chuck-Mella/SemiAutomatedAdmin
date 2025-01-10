@@ -1,17 +1,17 @@
+# Monsters from the PID
+Miscellaneous Code for solutions requiring out-of-the-box thinking.
 
-Convert-LightBulbs.ps1
-Create Convert-LightBulbs.ps1
-yesterday
-Convert-SIDs.ps1
-Create Convert-SIDs.ps1
-yesterday
-Get-FedHolidays.ps1
-Create Get-FedHolidays.ps1
-yesterday
-Mime-Conversion.ps1
-Create Mime-Conversion.ps1
-yesterday
-README.md
-Create README.md
-yesterday
-SimpleEncryption.ps1
+## Convert-LightBulbs.ps1
+Lumens to Watts and back.
+
+## Convert-SIDs.ps1
+Convert account names to SIDs and vice-versa.
+
+## Get-FedHolidays.ps1
+Functions for calculating Feder holidays. 
+
+## Mime-Conversion.ps1
+Functions for Encoiding|Decodinng files to Mime For emailing and code to determine a files mime-type.
+
+## SimpleEncryption.ps1
+Various code/text encryption tools (toying around stuff).
