@@ -15,3 +15,6 @@ Functions for Encoiding|Decodinng files to Mime For emailing and code to determi
 
 ## SimpleEncryption.ps1
 Various code/text encryption tools (toying around stuff).
+
+## Find-StaleWkstn.ps1
+ADSI tool for finding stale workstations.
