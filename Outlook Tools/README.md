@@ -3,10 +3,10 @@
 ## Backup-OutlookSignatures.ps1
 Compresses all signature files from the user's profile folders and saves the resultant zip file to the user's XXX folder.
 
-## Create Backup-OutlookSignatures.ps1
+## Restore-OutlookSignatures.ps1
+Restores all signature files from a backup file (created by Backup-OutlookSignatures) to the user's profile folders.
 
-New-SSDgtlSigntr.ps1
+## New-SSDgtlSigntr.ps1
+Creates a new Self-Signed certificate and places it in the 
 
-## Create New-SSDgtlSigntr.ps1
 
-Restore-OutlookSignatures.ps1
