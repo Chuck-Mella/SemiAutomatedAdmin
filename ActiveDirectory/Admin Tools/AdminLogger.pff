@@ -1,0 +1,280 @@
+<Object type="PrimalForm.Form, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="Admin MX" children="Controls">
+<Property name="BackColor">Control</Property>
+<Property name="ClientSize">437, 635</Property>
+<Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+</Property>
+<Property name="MaximizeBox">False</Property>
+<Property name="MinimizeBox">False</Property>
+<Property name="Name">Admin MX</Property>
+<Property name="Text">Admin MX</Property>
+<Event name="Load">handler_Admin_Load</Event>
+<Object type="PrimalForm.Button, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="button1" children="Controls">
+    <Property name="BackgroundImage" />
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">164, 586</Property>
+    <Property name="Name">button1</Property>
+    <Property name="Size">105, 37</Property>
+    <Property name="TabIndex">24</Property>
+    <Property name="Text">OK</Property>
+    <Property name="UseVisualStyleBackColor">True</Property>
+</Object>
+<Object type="System.Windows.Forms.ListBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="listBox1" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="FormattingEnabled">True</Property>
+    <Property name="Location">344, 201</Property>
+    <Property name="Name">listBox1</Property>
+    <Property name="Size">91, 17</Property>
+    <Property name="TabIndex">23</Property>
+</Object>
+<Object type="System.Windows.Forms.ComboBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="comboBox1" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="FormattingEnabled">True</Property>
+    <Property name="Location">3, 200</Property>
+    <Property name="Name">comboBox1</Property>
+    <Property name="Size">71, 21</Property>
+    <Property name="TabIndex">22</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox10" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">39, 450</Property>
+    <Property name="Multiline">True</Property>
+    <Property name="Name">textBox10</Property>
+    <Property name="Size">354, 124</Property>
+    <Property name="TabIndex">21</Property>
+    <Property name="Text">N/A</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox9" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">42, 387</Property>
+    <Property name="Name">textBox9</Property>
+    <Property name="Size">136, 20</Property>
+    <Property name="TabIndex">20</Property>
+    <Property name="Text">N/A</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox8" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">195, 314</Property>
+    <Property name="Multiline">True</Property>
+    <Property name="Name">textBox8</Property>
+    <Property name="Size">198, 98</Property>
+    <Property name="TabIndex">19</Property>
+    <Property name="Text">N/A</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox7" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">119, 256</Property>
+    <Property name="Name">textBox7</Property>
+    <Property name="Size">150, 20</Property>
+    <Property name="TabIndex">18</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox6" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">39, 313</Property>
+    <Property name="Multiline">True</Property>
+    <Property name="Name">textBox6</Property>
+    <Property name="Size">139, 38</Property>
+    <Property name="TabIndex">17</Property>
+    <Property name="Text">Routine Maintenance</Property>
+    <Event name="TextChanged">handler_textBox6_TextChanged</Event>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label12" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">39, 426</Property>
+    <Property name="Name">label12</Property>
+    <Property name="Size">179, 21</Property>
+    <Property name="TabIndex">16</Property>
+    <Property name="Text">Equipment Removed or Replaced</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label11" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">39, 363</Property>
+    <Property name="Name">label11</Property>
+    <Property name="Size">103, 21</Property>
+    <Property name="TabIndex">15</Property>
+    <Property name="Text">Escort (Vendor)</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label10" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">39, 259</Property>
+    <Property name="Name">label10</Property>
+    <Property name="Size">87, 20</Property>
+    <Property name="TabIndex">14</Property>
+    <Property name="Text">MX Technician</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label9" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">195, 289</Property>
+    <Property name="Name">label9</Property>
+    <Property name="Size">87, 24</Property>
+    <Property name="TabIndex">13</Property>
+    <Property name="Text">MX Description</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label8" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">39, 289</Property>
+    <Property name="Name">label8</Property>
+    <Property name="Size">75, 21</Property>
+    <Property name="TabIndex">12</Property>
+    <Property name="Text">MX Performed</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label7" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Font">Microsoft Sans Serif, 11.25pt, style=Bold, Italic</Property>
+    <Property name="Image" />
+    <Property name="Location">119, 212</Property>
+    <Property name="Name">label7</Property>
+    <Property name="Size">203, 31</Property>
+    <Property name="TabIndex">11</Property>
+    <Property name="Text">Maintenance Action (MX)</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox5" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">86, 156</Property>
+    <Property name="Name">textBox5</Property>
+    <Property name="Size">307, 20</Property>
+    <Property name="TabIndex">10</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox4" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">278, 115</Property>
+    <Property name="Name">textBox4</Property>
+    <Property name="Size">115, 20</Property>
+    <Property name="TabIndex">9</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox3" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">74, 113</Property>
+    <Property name="Name">textBox3</Property>
+    <Property name="Size">104, 20</Property>
+    <Property name="TabIndex">8</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox2" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">278, 68</Property>
+    <Property name="Name">textBox2</Property>
+    <Property name="Size">115, 20</Property>
+    <Property name="TabIndex">7</Property>
+</Object>
+<Object type="System.Windows.Forms.TextBox, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" name="textBox1" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Location">74, 68</Property>
+    <Property name="Name">textBox1</Property>
+    <Property name="Size">105, 20</Property>
+    <Property name="TabIndex">6</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label6" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">36, 159</Property>
+    <Property name="Name">label6</Property>
+    <Property name="Size">222, 21</Property>
+    <Property name="TabIndex">5</Property>
+    <Property name="Text">Log File</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label5" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">238, 118</Property>
+    <Property name="Name">label5</Property>
+    <Property name="Size">44, 17</Property>
+    <Property name="TabIndex">4</Property>
+    <Property name="Text">System</Property>
+    <Event name="Click">handler_label5_Click</Event>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label4" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">39, 117</Property>
+    <Property name="Name">label4</Property>
+    <Property name="Size">46, 18</Property>
+    <Property name="TabIndex">3</Property>
+    <Property name="Text">User</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label3" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">243, 71</Property>
+    <Property name="Name">label3</Property>
+    <Property name="Size">39, 23</Property>
+    <Property name="TabIndex">2</Property>
+    <Property name="Text">Time</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label2" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Image" />
+    <Property name="Location">39, 71</Property>
+    <Property name="Name">label2</Property>
+    <Property name="Size">46, 21</Property>
+    <Property name="TabIndex">1</Property>
+    <Property name="Text">Date</Property>
+</Object>
+<Object type="PrimalForm.Label, PrimalForms, Version=5.0.4105.22457, Culture=neutral, PublicKeyToken=null" name="label1" children="Controls">
+    <Property name="DataBindings">
+    <Property name="DefaultDataSourceUpdateMode">OnValidation</Property>
+    </Property>
+    <Property name="Font">Microsoft Sans Serif, 12pt, style=Bold, Italic</Property>
+    <Property name="Image" />
+    <Property name="Location">55, 29</Property>
+    <Property name="Name">label1</Property>
+    <Property name="RightToLeft">Yes</Property>
+    <Property name="Size">320, 23</Property>
+    <Property name="TabIndex">0</Property>
+    <Property name="Text">Admin Maintenance Log</Property>
+    <Property name="TextAlign">TopCenter</Property>
+</Object>
+</Object>
