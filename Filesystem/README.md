@@ -2,8 +2,8 @@
 
 Handy scripts and functions for manipulating objects within the filesystem
 
-## 1
+## Join-File.ps1
+Restore original file split by the Split-File script.
 
-
-## 2
-
+## Split-File.ps1
+Split files into user defined chunk sizes.
