@@ -11,7 +11,7 @@ Split files into user defined chunk sizes.
 ## Compare-FileHash.ps1
 Verify files hash values match.
 
-# Get-ZipFileContent.ps1
+## Get-ZipFileContent.ps1
 Funtions for collect contents of compressed archive files.
 
 ### Modules of interest
