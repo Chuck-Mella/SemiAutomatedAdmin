@@ -7,3 +7,9 @@ Restore original file split by the Split-File script.
 
 ## Split-File.ps1
 Split files into user defined chunk sizes.
+
+
+### Modules of interest
+     Install-Module -Name FileSplitter
+     Install-Module -Name SysAdminsFriends
+     
