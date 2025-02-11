@@ -18,3 +18,6 @@ Various code/text encryption tools (toying around stuff).
 
 ## Find-StaleWkstn.ps1
 ADSI tool for finding stale workstations.
+
+## Base64Converters.ps1
+Encode or decode 'Here string' text to/from a Base64 string to/from ascii|unicode text.
