@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='utf-8' ?>
+    <Snippets  xmlns='http://schemas.microsoft.com/PowerShell/Snippets'>
+        <Snippet Version='1.0.0'>
+            <Header>
+                <Title>Write Progress Sample</Title>
+                <Description>Progress and how to do it</Description>
+                <Author></Author>
+                <SnippetTypes>
+                    <SnippetType>Expansion</SnippetType>
+                </SnippetTypes>
+            </Header>
+
+            <Code>
+                <Script Language='PowerShell' CaretOffset='0'>
+                    <![CDATA[    #sample range of numbers
+    $users = (1..13000)
+ 
+    #setting up base number
+    $i=0
+     
+    ForEach ($user in $users){
+        #increment
+        $i++ 
+ 
+        #Round the numbers up for a nice output and then Write-Progress
+        Write-Progress -Activity "Processing $user" -PercentComplete (($i/$users.Count) * 100) -Status ("$i out of " + $users.Count +" completed "+[math]::Round((($i/$users.Count) * 100),2) +" %")
+        }]]>
+                </Script>
+            </Code>
+
+    </Snippet>
+</Snippets>
