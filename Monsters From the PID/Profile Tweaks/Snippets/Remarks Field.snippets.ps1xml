@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='utf-8' ?>
+    <Snippets  xmlns='http://schemas.microsoft.com/PowerShell/Snippets'>
+        <Snippet Version='1.0.0'>
+            <Header>
+                <Title>Remarks Field</Title>
+                <Description>Remarks Field</Description>
+                <Author>Chuck Mella</Author>
+                <SnippetTypes>
+                    <SnippetType>Expansion</SnippetType>
+                </SnippetTypes>
+            </Header>
+
+            <Code>
+                <Script Language='PowerShell' CaretOffset='0'>
+                    <![CDATA[
+                    <#
+                    #>
+                    ]]>
+                </Script>
+            </Code>
+        </Snippet>
+
+        <Snippet Version='1.0.0'>
+            <Header>
+                <Title>Code FIX Tagging</Title>
+                <Description>Error Fix Tagging</Description>
+                <Author>Chuck Mella</Author>
+                <SnippetTypes>
+                    <SnippetType>Expansion</SnippetType>
+                </SnippetTypes>
+            </Header>
+
+            <Code>
+                <Script Language='PowerShell' CaretOffset='0'>
+                    <![CDATA[
+                    ###  FIX-FIX-FIX  ### needs fix
+                    ]]>
+                </Script>
+            </Code>
+        </Snippet>
+</Snippets>
+
