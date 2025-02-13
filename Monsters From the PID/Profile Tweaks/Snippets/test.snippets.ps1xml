@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8' ?>
+    <Snippets  xmlns='http://schemas.microsoft.com/PowerShell/Snippets'>
+        <Snippet Version='1.0.0'>
+            <Header>
+                <Title>test</Title>
+                <Description>Desc text</Description>
+                <Author>me</Author>
+                <SnippetTypes>
+                    <SnippetType>Expansion</SnippetType>
+                </SnippetTypes>
+            </Header>
+
+            <Code>
+                <Script Language='PowerShell' CaretOffset='0'>
+                    <![CDATA[oogo
+booga]]>
+                </Script>
+            </Code>
+
+    </Snippet>
+</Snippets>
