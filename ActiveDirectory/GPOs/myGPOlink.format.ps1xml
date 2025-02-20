@@ -1,0 +1,386 @@
+<#
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!--
+    Format type data generated 01/11/2021 14:30:55 by COMPANY\ArtD
+    This file was created using the New-PSFormatXML command that is part
+    of the PSScriptTools module.
+    https://github.com/jdhitsolutions/PSScriptTools
+    -->
+    <Configuration>
+      <ViewDefinitions>
+        <View>
+          <!--Created 01/11/2021 14:30:55 by COMPANY\ArtD-->
+          <Name>default</Name>
+          <ViewSelectedBy>
+            <TypeName>myGPOLink</TypeName>
+          </ViewSelectedBy>
+          <TableControl>
+            <!--Delete the AutoSize node if you want to use the defined widths.-->
+            <AutoSize />
+            <TableHeaders>
+              <TableColumnHeader>
+                <Label>Target</Label>
+                <Width>20</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>DisplayName</Label>
+                <Width>24</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enabled</Label>
+                <Width>10</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enforced</Label>
+                <Width>11</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Order</Label>
+                <Width>6</Width>
+                <Alignment>right</Alignment>
+              </TableColumnHeader>
+            </TableHeaders>
+            <TableRowEntries>
+              <TableRowEntry>
+                <Wrap />
+                <TableColumnItems>
+                  <!--
+                By default the entries use property names, but you can replace them with scriptblocks.
+                <ScriptBlock>$_.foo /1mb -as [int]</ScriptBlock>
+    -->
+                  <TableColumnItem>
+                    <PropertyName>Target</PropertyName>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <PropertyName>DisplayName</PropertyName>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enabled) {
+                       $_.Enabled
+                     }
+                     else {
+                       "$([char]0x1b)[1;91m$($_.enabled)$([char]0x1b)[0m"
+                     }
+                    }
+                    else {
+                      $_.Enabled
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enforced) {
+                       "$([char]0x1b)[1;92m$($_.Enforced)$([char]0x1b)[0m"
+                     }
+                     else {
+                       $_.Enforced
+                     }
+                    }
+                    else {
+                      $_.Enforced
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <PropertyName>Order</PropertyName>
+                  </TableColumnItem>
+                </TableColumnItems>
+              </TableRowEntry>
+            </TableRowEntries>
+          </TableControl>
+        </View>
+        <View>
+          <!--Created 01/11/2021 14:31:07 by COMPANY\ArtD-->
+          <Name>link</Name>
+          <ViewSelectedBy>
+            <TypeName>myGPOLink</TypeName>
+          </ViewSelectedBy>
+          <GroupBy>
+            <!--
+                You can also use a scriptblock to define a custom property name.
+                You must have a Label tag.
+                <ScriptBlock>$_.machinename.toUpper()</ScriptBlock>
+                <Label>Computername</Label>
+                Use <Label> to set the displayed value.
+    -->
+            <PropertyName>Target</PropertyName>
+            <Label>Target</Label>
+          </GroupBy>
+          <TableControl>
+            <TableHeaders>
+              <TableColumnHeader>
+                <Label>DisplayName</Label>
+                <Width>35</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enabled</Label>
+                <Width>10</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enforced</Label>
+                <Width>11</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Order</Label>
+                <Width>6</Width>
+                <Alignment>right</Alignment>
+              </TableColumnHeader>
+            </TableHeaders>
+            <TableRowEntries>
+              <TableRowEntry>
+                <Wrap />
+                <TableColumnItems>
+                  <!--
+                By default the entries use property names, but you can replace them with scriptblocks.
+                <ScriptBlock>$_.foo /1mb -as [int]</ScriptBlock>
+    -->
+                  <TableColumnItem>
+                    <PropertyName>DisplayName</PropertyName>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enabled) {
+                       $_.Enabled
+                     }
+                     else {
+                       "$([char]0x1b)[1;91m$($_.enabled)$([char]0x1b)[0m"
+                     }
+                    }
+                    else {
+                      $_.Enabled
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enforced) {
+                       "$([char]0x1b)[1;92m$($_.Enforced)$([char]0x1b)[0m"
+                     }
+                     else {
+                       $_.Enforced
+                     }
+                    }
+                    else {
+                      $_.Enforced
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <PropertyName>Order</PropertyName>
+                  </TableColumnItem>
+                </TableColumnItems>
+              </TableRowEntry>
+            </TableRowEntries>
+          </TableControl>
+        </View>
+        <View>
+          <!--Created 01/11/2021 14:31:19 by COMPANY\ArtD-->
+          <Name>gpo</Name>
+          <ViewSelectedBy>
+            <TypeName>myGPOLink</TypeName>
+          </ViewSelectedBy>
+          <GroupBy>
+            <!--
+                You can also use a scriptblock to define a custom property name.
+                You must have a Label tag.
+                <ScriptBlock>$_.machinename.toUpper()</ScriptBlock>
+                <Label>Computername</Label>
+                Use <Label> to set the displayed value.
+    -->
+            <PropertyName>DisplayName</PropertyName>
+            <Label>DisplayName</Label>
+          </GroupBy>
+          <TableControl>
+            <TableHeaders>
+              <TableColumnHeader>
+                <Label>Target</Label>
+                <Width>45</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enabled</Label>
+                <Width>10</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enforced</Label>
+                <Width>11</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Order</Label>
+                <Width>6</Width>
+                <Alignment>right</Alignment>
+              </TableColumnHeader>
+            </TableHeaders>
+            <TableRowEntries>
+              <TableRowEntry>
+                <Wrap />
+                <TableColumnItems>
+                  <!--
+                By default the entries use property names, but you can replace them with scriptblocks.
+                <ScriptBlock>$_.foo /1mb -as [int]</ScriptBlock>
+    -->
+                  <TableColumnItem>
+                    <PropertyName>Target</PropertyName>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enabled) {
+                       $_.Enabled
+                     }
+                     else {
+                       "$([char]0x1b)[1;91m$($_.enabled)$([char]0x1b)[0m"
+                     }
+                    }
+                    else {
+                      $_.Enabled
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enforced) {
+                       "$([char]0x1b)[1;92m$($_.Enforced)$([char]0x1b)[0m"
+                     }
+                     else {
+                       $_.Enforced
+                     }
+                    }
+                    else {
+                      $_.Enforced
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <PropertyName>Order</PropertyName>
+                  </TableColumnItem>
+                </TableColumnItems>
+              </TableRowEntry>
+            </TableRowEntries>
+          </TableControl>
+        </View>
+        <View>
+          <!--Created 01/15/2021 10:37:41 by COMPANY\artd-->
+          <Name>targettype</Name>
+          <ViewSelectedBy>
+            <TypeName>myGPOLink</TypeName>
+          </ViewSelectedBy>
+          <GroupBy>
+            <!--
+                You can also use a scriptblock to define a custom property name.
+                You must have a Label tag.
+                <ScriptBlock>$_.machinename.toUpper()</ScriptBlock>
+                <Label>Computername</Label>
+                Use <Label> to set the displayed value.
+    -->
+            <PropertyName>TargetType</PropertyName>
+            <Label>TargetType</Label>
+          </GroupBy>
+          <TableControl>
+            <!--Delete the AutoSize node if you want to use the defined widths.
+            <AutoSize />-->
+            <TableHeaders>
+              <TableColumnHeader>
+                <Label>Target</Label>
+                <Width>50</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>DisplayName</Label>
+                <Width>35</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enabled</Label>
+                <Width>10</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Enforced</Label>
+                <Width>11</Width>
+                <Alignment>left</Alignment>
+              </TableColumnHeader>
+              <TableColumnHeader>
+                <Label>Order</Label>
+                <Width>6</Width>
+                <Alignment>right</Alignment>
+              </TableColumnHeader>
+            </TableHeaders>
+            <TableRowEntries>
+              <TableRowEntry>
+                <Wrap/>
+                <TableColumnItems>
+                  <!--
+                By default the entries use property names, but you can replace them with scriptblocks.
+                <ScriptBlock>$_.foo /1mb -as [int]</ScriptBlock>
+    -->
+                  <TableColumnItem>
+                    <PropertyName>Target</PropertyName>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <PropertyName>DisplayName</PropertyName>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enabled) {
+                       $_.Enabled
+                     }
+                     else {
+                       "$([char]0x1b)[1;91m$($_.enabled)$([char]0x1b)[0m"
+                     }
+                    }
+                    else {
+                      $_.Enabled
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <ScriptBlock>
+                    <!-*use ANSI formatting if using the console host-->
+                    if ($host.name -eq 'ConsoleHost') {
+                     if ($_.Enforced) {
+                       "$([char]0x1b)[1;92m$($_.Enforced)$([char]0x1b)[0m"
+                     }
+                     else {
+                       $_.Enforced
+                     }
+                    }
+                    else {
+                      $_.Enforced
+                    }
+                    </ScriptBlock>
+                  </TableColumnItem>
+                  <TableColumnItem>
+                    <PropertyName>Order</PropertyName>
+                  </TableColumnItem>
+                </TableColumnItems>
+              </TableRowEntry>
+            </TableRowEntries>
+          </TableControl>
+        </View>
+      </ViewDefinitions>
+    </Configuration>
+    #>
