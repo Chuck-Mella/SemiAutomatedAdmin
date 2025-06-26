@@ -81,7 +81,7 @@
         Version    : 5.0.2.5 20240402 ( Added central data collection functions to enable remote collection )
         Version    : 5.3.3.3 20250520 ( Streamlining code for logic and readability )
         Version    : 5.3.4.9 20250625 ( Added error checking to VSCode, rcntSW and BitLocker checks )
-        Version    : 5.3.5.4 20250626 Current Build ( Added report output(s) for MPs/Links, WiFi Pwds, Hyper-V switches & VMs, VSCode Extensions )
+        Version    : 5.3.5.5 20250626 Current Build ( Added report output(s) for MPs/Links, WiFi Pwds, Hyper-V switches & VMs, VSCode Extensions, OneDrive )
 #>
 [CmdletBinding()]
 Param
@@ -902,9 +902,37 @@ PROCESS
                                 $VSInfo = "<h2>Installed Visual-Studio Code Extensions</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>"
                             }
                         #endregion
-                        #region OneDrive
+                        #region OneDrive ###  FIX-FIX-FIX  ### Verify data returned
+                            $1drvInfo = $sysData.OneDrive
+                            If ($1drvInfo -isnot [object]){ $1drvInfo = 'No Data' }
+                            If ($1drvInfo -isnot [string]){
+                                $1drvInfo = $1drvInfo | Select-Object @{n='OneDrive Name';e={$_.Name}},@{n='Location';e={$_.Value}}
+
+                                $1drvInf = $1drvInfo | ConvertTo-HTML -fragment -As List -PreContent "<h3> Discovered OneDrive Instances </h3>" 
+
+                                $1drvTitle = "<h2>OneDrive Information</h2>`n<DATA>"
+                                $1DvInfo = $1drvTitle -replace '<DATA>',$1drvInf
+                            }
+                            Else
+                            {
+                                $1DvInfo = "<h2>Symbolic Link | MountPoint Information</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>"
+                            }
                         #endregion
-                        #region BitLocker
+                        #region BitLocker ###  FIX-FIX-FIX  ### Verify data returned
+                            $BLckrInfo = $sysData.BitLocker
+                            If ($BLckrInfo -isnot [object]){ $BLckrInfo = 'No Data' }
+                            If ($BLckrInfo -isnot [string]){
+                                $BLckrInfo = $BLckrInfo | Select-Object @{n='OneDrive Name';e={$_.Name}},@{n='Location';e={$_.Value}}
+
+                                $BLckrInf = $BLckrInfo | ConvertTo-HTML -fragment -As List -PreContent "<h3> Discovered BitLocker Data </h3>" 
+
+                                $BLckrTitle = "<h2>BitLocker Information</h2>`n<DATA>"
+                                $blckInfo = $1drvTitle -replace '<DATA>',$BLckrInf
+                            }
+                            Else
+                            {
+                                $blckInfo = "<h2>BitLocker Information</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>"
+                            }
                         #endregion
                     #endregion
 
