@@ -81,8 +81,18 @@
         Version    : 5.0.2.5 20240402 ( Added central data collection functions to enable remote collection )
         Version    : 5.3.3.3 20250520 ( Streamlining code for logic and readability )
         Version    : 5.3.4.9 20250625 ( Added error checking to VSCode, rcntSW and BitLocker checks )
-        Version    : 5.3.5.5 20250626 Current Build ( Added report output(s) for MPs/Links, WiFi Pwds, Hyper-V switches & VMs, VSCode Extensions, OneDrive )
+        Version    : 5.3.5.6 20250626 Current Build ( Added report output(s) for MPs/Links, WiFi Pwds, Hyper-V switches & VMs, VSCode Extensions, OneDrive, BitLocker )
+
+
+        Possible Adds
+            - Collect System Data into local variable (results)
+            - Alt Creds?
+            - Save vTMP Certs ( Export-UntrustedGuardian -pwd password -trgPath $trgFolder )
+            - Get-VMMigrationNetwork
+            - Backup-VMMetaData -vmFile ($trgFolder + "\" + "VmMetaBu_$(&Hostname)_$(Get-Date -f yyyy-MM-dd).xml")
+
 #>
+#Requires -RunAsAdministrator
 [CmdletBinding()]
 Param
 (
@@ -987,39 +997,9 @@ PROCESS
                 If (($email.IsPresent) -eq $true){ $emailReports.add($outFile) }
             #endregion
         }
-
-
-
-<#
-#region - Collect System Data into local variable (results)
-
-
-           
-        #endregion
-#    Alt Creds?
-#    # Save vTMP Certs
-#        Export-UntrustedGuardian -pwd password -trgPath $trgFolder
-#
-#l
-##
-#
-#        Get-VMMigrationNetwork
-#        Backup-VMMetaData -vmFile ($trgFolder + "\" + "VmMetaBu_$(&Hostname)_$(Get-Date -f yyyy-MM-dd).xml")
-#        Backup-VMMetaData -vmFile ($trgFolder + "\" + "VmMetaBu_$(&Hostname)_$(Get-Date -f yyyy-MM-dd).xml")
-#    # Save vTMP Certs
-#        Export-UntrustedGuardian -pwd password -trgPath $trgFolder
-#    # Save Switches
-#              
-#Requires -RunAsAdministrator
-
-
-
-#Function Get-SystemReport
-#{#>
-
-    }
-    END
-    {
+}
+END
+{
         # If email option is selected, send email with attachments
         $tmpFile = (New-TemporaryFile) -replace 'tmp$','csv'
         $failedSystems | ConvertFrom-Csv -Header Computer,Date,Time,Status | Export-Csv -NoTypeInformation -Path $tmpFile
@@ -1041,7 +1021,5 @@ PROCESS
 
         $failedSystems | ConvertFrom-Csv -Header Computer,Date,Time,Status | OGV -Title "System Data Collection Report [$(Get-Date -f 'MM-dd-yyyy,HH:mm:ss')]"
     }
-}
 
-Get-SystemReport @rptParams
-#>
+# Get-SystemReport @rptParams
