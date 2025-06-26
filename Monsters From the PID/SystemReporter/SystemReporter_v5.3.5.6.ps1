@@ -953,7 +953,9 @@ PROCESS
             #region  -  Assemble System Report
                 # Combine all the information gathered into a single HTML report
                 $Report = ConvertTo-HTML `
-                    -Body "$SystemName $rptContext $SysInfo $BiosInfo $ProcInfo $sysMemInfo $ProcessInfo $DrvInfo $NetInfo $ShareInfo $SvcInfo $evtSystemInfo $evtApplicationInfo $evtSecurityInfo $AppInfo $rnctSWInfo $FeatureInfo"  `
+                    -Body ("$SystemName $rptContext $SysInfo $BiosInfo $ProcInfo $sysMemInfo $ProcessInfo $DrvInfo $SLMPInfo " +
+                           "$NetInfo $ShareInfo $SvcInfo $evtSystemInfo $evtApplicationInfo $evtSecurityInfo $AppInfo $rnctSWInfo " +
+                           "$FeatureInfo $WFPDInfo $HVSInfo $HVMInfo $VSInfo $1DvInfo $blckInfo")  `
                     -Head $header -Title "Computer Information Report - $Systems" -PostContent "<p id='CreationDate'>Creation Date: $(Get-Date) User:$env:UserName</p>"
             #endregion
 
