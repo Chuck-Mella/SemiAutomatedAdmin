@@ -81,7 +81,8 @@
         Version    : 5.0.2.5 20240402 ( Added central data collection functions to enable remote collection )
         Version    : 5.3.3.3 20250520 ( Streamlining code for logic and readability )
         Version    : 5.3.4.9 20250625 ( Added error checking to VSCode, rcntSW and BitLocker checks )
-        Version    : 5.3.5.6 20250626 Current Build ( Added report output(s) for MPs/Links, WiFi Pwds, Hyper-V switches & VMs, VSCode Extensions, OneDrive, BitLocker )
+        Version    : 5.3.5.6 20250626 ( Added report output(s) for MPs/Links, WiFi Pwds, Hyper-V switches & VMs, VSCode Extensions, OneDrive, BitLocker )
+        Version    : 5.3.5.8 20250702 Current Build ( Corrections to BitLocker output )
 
 
         Possible Adds
@@ -381,7 +382,10 @@ BEGIN
                     If (Test-Path -Path "$env:ProgramFiles\Microsoft VS Code\Code.exe" -PathType Leaf){(code --list-extensions | % { "code --install-extension $_" })}
                     Else { 'VisualStudio Code in not installed' })
                 OneDrive = $(If ($System -eq $env:ComputerName){ @{Personal=$env:OneDriveConsumer;BUsiness=$env:OneDriveCommercial} })
-                BitLocker = $(
+                BitLocker = $null
+                }
+
+            $results.BitLocker = $(
                     If ((Test-IsAdmin) -eq $true)
                     {
                         If ((Get-WmiObject Win32_OperatingSystem -ComputerName $system).ProductType -eq 1)
@@ -396,23 +400,31 @@ BEGIN
                                 {
                                     'FullyDecrypted' { $bInfo }
                                     'FullyEncrypted' { $bInfo }
+                                    'EncryptionInProgress' { $bInfo | Select VolumeType,MountPoint,CapacityGB,VolumeStatus,
+                                                                        @{N="Encryption`nPercentage";E={$_.EncryptionPercentage}},KeyProtector,
+                                                                        @{N="AutoUnlock`nEnabled";E={$_.AutoUnlockEnabled}},
+                                                                        @{N="Protection`nStatus";E={$_.ProtectionStatus}},
+                                                                        @{N="Encryption`nProgress";E={($_.EncryptionPercentage/100).ToString("P")}} | FT }  
+                                    default { "Status,Explanation`nNo data,BitLocker Data Unavailable" | ConvertFrom-Csv }
                                 }
                             }
                         }
+                        Else { "Status,Explanation`nNo Data,Server OS - BitLocker Disabled" | ConvertFrom-Csv }
                     }
-                    Else { 'No Data. Elevated Privledges Required to access BitLocker Data' })
-                }
+                    Else { "Status,Explanation`nNo Data,Elevated Privledges Required to access BitLocker Data" | ConvertFrom-Csv })
 
             $results.aclShares = $results.trgShares | Get-SmbShareAccess -CimSession $system
 
             $results.OSInfo | Add-Member -MemberType NoteProperty -Name 'ReleaseId' -Value (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name ReleaseId).ReleaseId
             $results.OSInfo | Add-Member -MemberType NoteProperty -Name 'ProdId' -Value (Get-WmiObject -query 'select * from SoftwareLicensingService').OA3xOriginalProductKey
 
+            $exempts = '(Application Data|Cookies|Desktop|Documents|Local Settings|My Documents|NetHood|PrintHood|Recent|SendTo|Start Menu|Templates)$'
+
             $results.MountPoints = $(
                 $tmp = $results.DiskInfo | Where VolumeName -notmatch $colDrv_VolName | Where DriveType -eq 3
                 ForEach ($itm in $tmp )
                 {
-                    SearchLinks -prefEA SilentlyContinue -srchPath "$($itm.DeviceID)\" -Hidden -ReCurse -Dep 2 | 
+                    SearchLinks -prefEA SilentlyContinue -srchPath "$($itm.DeviceID)\" -Hidden -ReCurse -Dep 2 | Where Name -NotMatch $exempts
                         %{ @{($_.fullname)=(Get-ReparsePoint -path $_.fullname)} } |
                         Select @{name='Link';exp={$_.keys}},@{name='Target';exp={$_.Values}}
                 }
@@ -544,7 +556,7 @@ PROCESS
                             $sysMem = @{} | Select Total,Free,UsedRAM,PercentFree
                             $sysMem.Total = $OSinfo.'Memory Total (GB)'
                             $sysMem.Free = $OSinfo.'Memory Free (GB)'
-                            $sysMem.UsedRAM = ($OSinfo.'Memory Total (GB)' *$OSinfo.'Memory Free (GB)')
+                            $sysMem.UsedRAM = ($OSinfo.'Memory Total (GB)' - $OSinfo.'Memory Free (GB)')
                             $sysMem.PercentFree = [Math]::Round(($OSinfo.'Memory Free (GB)' / $sysMem.Total) * 100, 2)
 
                             $sysMemInfo = $sysMem | ConvertTo-Html -Fragment -Property Total,Free,UsedRAM,PercentFree -PreContent "<h2>Memory Stats</h2>"
@@ -591,7 +603,7 @@ PROCESS
                             If ($MPInfo -isnot [string]){
                                 $MPInfo = $MPInfo | Select-Object @{n='Link Location';e={$_.Link}},@{n='Link Target';e={$_.Target}}
 
-                                $SLMPInf = $MPInfo | ConvertTo-HTML -fragment -As List -PreContent "<h3> Discovered Links & MountPoints </h3>" 
+                                $SLMPInf = $MPInfo | ConvertTo-HTML -fragment -As Table -PreContent "<h3> Discovered Links & MountPoints </h3>" 
 
                                 $SLMPTitle = "<h2>Symbolic Link | MountPoint Information</h2>`n<DATA>"
                                 $SLMPInfo = $SLMPTitle -replace '<DATA>',$SLMPInf
@@ -857,7 +869,7 @@ PROCESS
                             }
                             Else
                             {
-                                $WFPDInfo = "<h2>Symbolic Link | MountPoint Information</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>"
+                                $WFPDInfo = "<h2>WiFi SSiD | Password Information</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>"
                             }
                         #endregion
                         #region Hyper-V ###  FIX-FIX-FIX  ### Collect data into single section
@@ -902,7 +914,7 @@ PROCESS
                             $vscInfo = ($sysData.VS_Code -split '`n')
                             If ($vscInfo -isnot [object]){ $vscInfo = "<h2>Installed Visual-Studio Code Extensions</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>" }
                             If ($vscInfo -isnot [string]){
-                                $vscInf = $vscInfo | ConvertTo-HTML -fragment -As List -PreContent "<h3> Installed VS-Code Extension CMDlets </h3>" 
+                                $vscInf = $vscInfo | ConvertTo-HTML -fragment -As Table -PreContent "<h3> Installed VS-Code Extension CMDlets </h3>" 
 
                                 $VSCTitle = "<h2>Installed Visual-Studio Code Extensions</h2>`n<DATA>"
                                 $VSInfo = $VSCTitle -replace '<DATA>',$vscInf
@@ -918,7 +930,7 @@ PROCESS
                             If ($1drvInfo -isnot [string]){
                                 $1drvInfo = $1drvInfo | Select-Object @{n='OneDrive Name';e={$_.Name}},@{n='Location';e={$_.Value}}
 
-                                $1drvInf = $1drvInfo | ConvertTo-HTML -fragment -As List -PreContent "<h3> Discovered OneDrive Instances </h3>" 
+                                $1drvInf = $1drvInfo | ConvertTo-HTML -fragment -As Table -PreContent "<h3> Discovered OneDrive Instances </h3>" 
 
                                 $1drvTitle = "<h2>OneDrive Information</h2>`n<DATA>"
                                 $1DvInfo = $1drvTitle -replace '<DATA>',$1drvInf
@@ -1022,6 +1034,6 @@ END
         }
 
         $failedSystems | ConvertFrom-Csv -Header Computer,Date,Time,Status | OGV -Title "System Data Collection Report [$(Get-Date -f 'MM-dd-yyyy,HH:mm:ss')]"
-    }
 
 # Get-SystemReport @rptParams
+}
