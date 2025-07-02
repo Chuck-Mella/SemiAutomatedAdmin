@@ -940,21 +940,14 @@ PROCESS
                                 $1DvInfo = "<h2>Symbolic Link | MountPoint Information</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>"
                             }
                         #endregion
-                        #region BitLocker ###  FIX-FIX-FIX  ### Verify data returned
+                        ###  FIX-FIX-FIX  ### Fix RAM PieChart
+                        ###  FIX-FIX-FIX  ### installed prograns from registry (permissions?)
+                        #region BitLocker
                             $BLckrInfo = $sysData.BitLocker
-                            If ($BLckrInfo -isnot [object]){ $BLckrInfo = 'No Data' }
-                            If ($BLckrInfo -isnot [string]){
-                                $BLckrInfo = $BLckrInfo | Select-Object @{n='OneDrive Name';e={$_.Name}},@{n='Location';e={$_.Value}}
+                            $BLckrInf = $BLckrInfo | ConvertTo-HTML -fragment -As Table -PreContent "<h3> Discovered BitLocker Data </h3>" 
 
-                                $BLckrInf = $BLckrInfo | ConvertTo-HTML -fragment -As List -PreContent "<h3> Discovered BitLocker Data </h3>" 
-
-                                $BLckrTitle = "<h2>BitLocker Information</h2>`n<DATA>"
-                                $blckInfo = $1drvTitle -replace '<DATA>',$BLckrInf
-                            }
-                            Else
-                            {
-                                $blckInfo = "<h2>BitLocker Information</h2>`n<table>`n<tr><td>No</td><td>Data</td></tr>`n</table>"
-                            }
+                            $BLckrTitle = "<h2>BitLocker Information</h2>`n<DATA>"
+                            $blckInfo = $1drvTitle -replace '<DATA>',$BLckrInf
                         #endregion
                     #endregion
 
@@ -1037,3 +1030,30 @@ END
 
 # Get-SystemReport @rptParams
 }
+<#
+Get-Item : Cannot bind argument to parameter 'Path' because it is an empty string.
+At C:\Users\CAMELLA\OneDrive - Federal Bureau of Investigation\Desktop\SysRep5.3.ps1:285 char:30
++             $file = Get-Item $path -Force -ea SilentlyContinue
++                              ~~~~~
+    + CategoryInfo          : InvalidData: (:) [Get-Item], ParameterBindingValidationException
+    + FullyQualifiedErrorId : ParameterArgumentValidationErrorEmptyStringNotAllowed,Microsoft.PowerShell.Commands.GetItemCommand
+ 
+WARNING: Not a SymLink!
+A null key is not allowed in a hash literal.
+At C:\Users\CAMELLA\OneDrive - Federal Bureau of Investigation\Desktop\SysRep5.3.ps1:428 char:30
++                         %{ @{($_.fullname)=(Get-ReparsePoint -path $_ ...
++                              ~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Collections.Hashtable:Hashtable) [], RuntimeException
+    + FullyQualifiedErrorId : InvalidNullKey
+ 
+Done, Processing Collected Data
+Now processing RAM Usage Chart (Used/Free) chart SystemReport_HQPO value: Free
+Now processing RAM Usage Chart (Used/Free) chart SystemReport_HQPO value: Used
+Now processing Drive Freespace Chart (Free/Used) chart SystemReport_HQPO value: Free
+Now processing Drive Freespace Chart (Free/Used) chart SystemReport_HQPO value: Used
+Method invocation failed because [System.Management.Automation.PSObject] does not contain a method named 'op_Addition'.
+At C:\Users\CAMELLA\OneDrive - Federal Bureau of Investigation\Desktop\SysRep5.3.ps1:648 char:40
++ ...                               Else { $NICData = $NICData + $NicInfo }
++                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (op_Addition:String) [], RuntimeException
+    + FullyQualifiedErrorId : MethodNotFound#>
