@@ -22,8 +22,8 @@ ADSI tool for finding stale workstations.
 ## Base64Converters.ps1
 Encode or decode 'Here string' text to/from a Base64 string to/from ascii|unicode text.
 
+## Remove-InSeries.ps1
+Remove all text from strings before or after a designated delimeter.
 
-Recreate-ISOBuilder.ps1
-
-Recreate-ISOBuilder.ps1
-
+## Recreate-ISOBuilder.ps1
+Re-Creates scripts and shortcuts to enable drag & drop creation of ISO images (placed on user desktop).
