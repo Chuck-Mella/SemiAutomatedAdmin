@@ -1,6 +1,10 @@
+$imgPath = "C:\Users\CAMELLA\source\repos\N_OneTool\onetool-1\Images"
+$icoPath = "C:\Users\CAMELLA\OneDrive - Federal Bureau of Investigation\Documents\Desktop"
+$in = "OneToolIcon-Black.png"
 $out = "OneToolIcon-Black.ico"
 $in = "OneToolIcon-Gold.png"
 $out = "OneToolIcon-Gold.ico"
+
 
 #region - 
     Add-Type -AssemblyName System.Drawing
