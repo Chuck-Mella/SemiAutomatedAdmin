@@ -26,7 +26,7 @@
         }
         
         
-        function Get-FedHolidays([datetime] $DateToCheck = (Get-Date),[switch]$test)
+        function Get-FedHolidays([datetime]$DateToCheck = (Get-Date),[switch]$test)
         {
             [int]$year = $DateToCheck.Year
             $cycle = If (($year % 2) -eq 0){If (($year % 4) -eq 0){' (Federal)'} Else {' (Local)'}} Else {'N/A'}
@@ -40,7 +40,7 @@
                 $(Get-Date ([datetime]"7/4/$year") -f MM/dd/yyyy),,Y,Independence Day,4th July 1776
                 $(Get-Date ((0..6 | %{([datetime]"9/1/$year").AddDays($_)}|?{$_.DayOfWeek -eq 'Monday'})[0]) -f MM/dd/yyyy),,Y,Labor Day,first Monday in Sept.
                 $(Get-Date ((0..29 | %{([datetime]"10/1/$year").AddDays($_)}|?{$_.DayOfWeek -eq 'Monday'})[1]) -f MM/dd/yyyy),,Y,Columbus Day,2nd Monday in Oct
-                $(If ($cycle -ne 'N/A'){Get-Date ((0..7 | %{([datetime]"11/1/$year").AddDays($_)}|?{$_.DayOfWeek -eq 'Tuesday'})[0]) -f MM/dd/yyyy}),,Y,Election Day,Polls$cycle
+                $(If ($cycle -ne 'N/A'){"{0:MM/dd/yyyy}"  -f (0..7 | %{([datetime]"11/1/$year").AddDays($_)}|?{$_.DayOfWeek -eq 'Tuesday'})[0]}Else{"N/A"}),,Y,Election Day,Polls $cycle
                 $(Get-Date ([datetime]"11/11/$year") -f MM/dd/yyyy),,Y,Veterans Day,Nov 11th
                 $(Get-Date ((0..29 | %{([datetime]"11/1/$year").AddDays($_)}|?{$_.DayOfWeek -eq 'Thursday'})[3]) -f MM/dd/yyyy),,Y,Thanksgiving,Last Thu in Nov.
                 $(Get-Date (((0..29 | %{([datetime]"11/1/$year").AddDays($_)}|?{$_.DayOfWeek -eq 'Thursday'})[3]).AddDays(1)) -f MM/dd/yyyy),,N,Black Friday,Day after Thanksgiving
@@ -49,14 +49,13 @@
                 $(Get-Date ([datetime]"12/31/$year") -f MM/dd/yyyy),,N,New Years Eve,Dec 31st
                 "| ConvertFrom-Csv -Header Date,DoW,Obsrvd,Holiday,Remarks
                 # Correct for Sat-Sun offsets
-                    $HolidaysInYear | %{ If ((Get-Date $_.Date).DayOfWeek -eq 'Saturday'){$_.Date = (Get-Date (Get-Date ($_.Date)).AddDays(-1) -f MM/dd/yyyy) }}
-                    $HolidaysInYear | %{ If ((Get-Date $_.Date).DayOfWeek -eq 'Sunday'){$_.Date = (Get-Date (Get-Date ($_.Date)).AddDays(+1) -f MM/dd/yyyy) }}
+                    $HolidaysInYear | Where Date -ne 'N/A' | %{ If ((Get-Date $_.Date).DayOfWeek -eq 'Saturday'){$_.Date = (Get-Date (Get-Date ($_.Date)).AddDays(-1) -f MM/dd/yyyy) }}
+                    $HolidaysInYear | Where Date -ne 'N/A' | %{ If ((Get-Date $_.Date).DayOfWeek -eq 'Sunday'){$_.Date = (Get-Date (Get-Date ($_.Date)).AddDays(+1) -f MM/dd/yyyy) }}
                 # Populate DoW Field
-                    $HolidaysInYear | %{$_.DoW = ((Get-Date ($_.Date)).DayOfWeek) }
+                    $HolidaysInYear | Where Date -ne 'N/A' | %{$_.DoW = ((Get-Date ($_.Date)).DayOfWeek) }
             If ($test.IsPresent){ Return $HolidaysInYear.Date -contains (Get-date -f MM/dd/yyyy) }
             Else{ Return $HolidaysInYear }
         }
 
         Get-FedHolidays | Where Obsrvd -eq 'y' | OGV -Title "Federal Holidays ($((Get-Date).Year))"
-        Get-FedHolidays -test
-        
+        Get-FedHolidays -test # Replaces "IsHoliday" Function
