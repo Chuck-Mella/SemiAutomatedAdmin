@@ -1,0 +1,1369 @@
+#region - HyperV
+    Function Export-UntrustedGuardian
+    {
+        $GuardianName = 'UntrustedGuardian'
+        $CertificatePassword = Read-Host -Prompt 'Please enter a password to secure the certificate files' -AsSecureString
+
+        $guardian = Get-HgsGuardian -Name $GuardianName
+        if (-not $guardian)
+        {
+            throw "Guardian '$GuardianName' could not be found on the local system."
+        }
+
+        $encryptionCertificate = Get-Item -Path "Cert:\LocalMachine\Shielded VM Local Certificates\$($guardian.EncryptionCertificate.Thumbprint)"
+        $signingCertificate = Get-Item -Path "Cert:\LocalMachine\Shielded VM Local Certificates\$($guardian.SigningCertificate.Thumbprint)"
+
+        if (-not ($encryptionCertificate.HasPrivateKey -and $signingCertificate.HasPrivateKey))
+        {
+            throw 'One or both of the certificates in the guardian do not have private keys. ' + `
+                  'Please ensure the private keys are available on the local system for this guardian.'
+        }
+ 
+        Export-PfxCertificate -Cert $encryptionCertificate -FilePath ".\$GuardianName-encryption.pfx" -Password $CertificatePassword
+        Export-PfxCertificate -Cert $signingCertificate -FilePath ".\$GuardianName-signing.pfx" -Password $CertificatePassword
+    }
+
+    Function Import-UntrustedGuardian
+    {
+        $NameOfGuardian = 'UntrustedGuardian'
+        $CertificatePassword = Read-Host -Prompt 'Please enter the password that was used to secure the certificate files' -AsSecureString
+        New-HgsGuardian -Name $NameOfGuardian -SigningCertificate ".\$NameOfGuardian-signing.pfx" -SigningCertificatePassword $CertificatePassword -EncryptionCertificate ".\$NameOfGuardian-encryption.pfx" -EncryptionCertificatePassword $CertificatePassword -AllowExpired -AllowUntrustedRoot
+    }
+#endregion
+
+#region Scheduled Tasks.ps1
+$Global:currDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()).Name
+$Global:sysScripts = "\\$currDomain\sysvol\$currDomain\Scripts"
+$Global:User = 'domain\svc_Account'
+$Global:UPwd = 'Password' # (Get-Key -pt -it $null)
+Function Get-Key
+{
+    Param ( [switch]$pt,$it )
+    $keyfile = "$sysScripts\key$it.bin"
+    $aesKey = (Get-Content $keyfile)[0..31]
+    $encText = (Get-Content $keyfile)[-1]
+    $rslt = ($obj = New-Object System.Management.Automation.PSCredential('',$encText)).Password
+    If ($pt.IsPresent -eq $true)
+    {
+        $blue = [System.Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($rslt)
+        $red = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($blue)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeCoTaskMemUnicode($blue)
+        $rslt = $obj.GetNetworkCredential().Password
+    }
+    Return $rslt
+}
+
+# Create Daily Scheduled Task
+    $Params = @{
+        TaskName = 'Print Jos Log'
+        Description = 'Backup Print Job Log to network share'
+        Trigger = $(New-ScheduledTaskTrigger -At 18:01 -Daily) 
+        Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoLogo -NoProfile -ExecutionPolicy ByPass -file "'+$sysScripts+'\Log-PrintJobs.ps1"')
+        Settings = $(New-ScheduledTaskSettingsSet -Compatibility Win8)
+        User = $User
+        Password = $UPwd
+        TaskPath = '\ScriptedTasks'
+        RunLevel = 'Highest'
+        }
+    Register-ScheduledTask @Params
+
+# Create Monthly Scheduled Task
+    $taskName = 'PrintJob Log Split'
+    $taskUser = $User
+    $taskUserPwd = $UPwd
+    $System = $Env:computername
+
+    $tasker = New-Object -ComObject ("Schedule.Service")
+    $tasker.Connect($System)
+
+    $RootFolder = Try { $tasker.GetFolder('\').CreateFolder('ScriptedTasks') } Catch { $tasker.GetFolder("\ScriptedTasks") }
+        $TaskDefinition = $Service.NewTask(0)
+        $TaskDefinition.Principal.RunLevel = 1 # 0=Least, 1=Highest
+            $regInfo = $TaskDefinition.RegistrationInfo
+                $regInfo.Description = 'Run annually to separate PrintJob Logs by year.'
+                $regInfo.Author = $env:UserName
+                $regInfo.Version = Get-Date -f MM.dd.yy.HHmm
+            $settings = $taskDefinition.Settings
+                $settings.Enabled = $true
+                $settings.Compatibility = 5 #win2019?
+                $settings.StartWhenAvailable = $true
+                # $settings.AllowDemandStart = $true
+                $settings.Hidden = $false
+            $Triggers = $TaskDefinition.Triggers
+                $evtID = '7036'
+                $evtLog = 'System'
+                #$Trigger = $Triggers.Create(0) ## 0 is an event trigger
+                #    $Trigger.Id = $evtID
+                #    $Trigger.Subscription = "<QueryList><Query Id='0'><Select Path='$evtLog'>*[$evtLog[EventID=$evtID]]</Select></Query></QueryList>" 
+                #    $Trigger.Enabled = $true
+                $Trigger = $Triggers.Create(4) ## 4 is a monthly trigger
+                    $Trigger.Id = 'BOM'
+                    $Trigger.MonthsOfYear = 1
+                    $Trigger.DaysOfMonth = 2
+                    $Trigger.StartBoundary = "{0:yyyy-MM-ddTHH:mm:ss}" -f [datetime]"1/2/$(Get-Date -f yyyy) 18:30"
+                    #$trigger.EndBoundary = "{0:yyyy-MM-ddTHH:mm:ss}" -f [datetime]::Now.AddMinutes(30)
+                   $Trigger.Enabled = $true
+            $Action = $TaskDefinition.Actions.Create(0)
+                $Action.Path = 'powershell.exe'
+                $Action.Arguments = '-NoLogo -NoProfile -ExecutionPolicy ByPass -file "'+$sysScripts+'\Log-PrintJobs.ps1" -FixLogs'
+    $rootFolder.RegisterTaskDefinition($taskName,$TaskDefinition,6,$taskUser,$taskUserPwd ,1)
+
+
+
+
+[enum]::GetValues([Microsoft.PowerShell.ScheduledJob.TriggerFrequency])
+
+$defTriggers = (Dec64 'VGFza19UcmlnZ2VyO1ZhbHVlO0Rlc2NyaXB0aW9uDQpfRVZFTlQ7MDtUcmlnZ2VycyB0aGUgdGFzayB3aGVuIGEgc3BlY2lmaWMgZXZlbnQgb2NjdXJzLiBGb3IgbW9yZSBpbmZ
+    vcm1hdGlvbiBhYm91dCBldmVudCB0cmlnZ2Vycywgc2VlIElFdmVudFRyaWdnZXIuDQpfVElNRTsxO1RyaWdnZXJzIHRoZSB0YXNrIGF0IGEgc3BlY2lmaWMgdGltZSBvZiBkYXkuIEZvciBtb3JlIGluZ
+    m9ybWF0aW9uIGFib3V0IHRpbWUgdHJpZ2dlcnMsIHNlZSBJVGltZVRyaWdnZXIuDQpfREFJTFk7MjtUcmlnZ2VycyB0aGUgdGFzayBvbiBhIGRhaWx5IHNjaGVkdWxlLiBGb3IgZXhhbXBsZSwgdGhlIHR
+    hc2sgc3RhcnRzIGF0IGEgc3BlY2lmaWMgdGltZSBldmVyeSBkYXksIGV2ZXJ5IG90aGVyIGRheSwgb3IgZXZlcnkgdGhpcmQgZGF5LiBGb3IgbW9yZSBpbmZvcm1hdGlvbiBhYm91dCBkYWlseSB0cmlnZ
+    2Vycywgc2VlIElEYWlseVRyaWdnZXIuDQpfV0VFS0xZOzM7VHJpZ2dlcnMgdGhlIHRhc2sgb24gYSB3ZWVrbHkgc2NoZWR1bGUuIEZvciBleGFtcGxlLCB0aGUgdGFzayBzdGFydHMgYXQgODowMCBBTSB
+    vbiBhIHNwZWNpZmljIGRheSBldmVyeSB3ZWVrIG9yIG90aGVyIHdlZWsuIEZvciBtb3JlIGluZm9ybWF0aW9uIGFib3V0IHdlZWtseSB0cmlnZ2Vycywgc2VlIElXZWVrbHlUcmlnZ2VyLg0KX01PTlRIT
+    Fk7NDtUcmlnZ2VycyB0aGUgdGFzayBvbiBhIG1vbnRobHkgc2NoZWR1bGUuIEZvciBleGFtcGxlLCB0aGUgdGFzayBzdGFydHMgb24gc3BlY2lmaWMgZGF5cyBvZiBzcGVjaWZpYyBtb250aHMuIEZvciB
+    tb3JlIGluZm9ybWF0aW9uIGFib3V0IG1vbnRobHkgdHJpZ2dlcnMsIHNlZSBJTW9udGhseVRyaWdnZXIuDQpfTU9OVEhMWURPVzs1O1RyaWdnZXJzIHRoZSB0YXNrIG9uIGEgbW9udGhseSBkYXktb2Ytd
+    2VlayBzY2hlZHVsZS4gRm9yIGV4YW1wbGUsIHRoZSB0YXNrIHN0YXJ0cyBvbiBhIHNwZWNpZmljIGRheXMgb2YgdGhlIHdlZWssIHdlZWtzIG9mIHRoZSBtb250aCwgYW5kIG1vbnRocyBvZiB0aGUgeWV
+    hci4gRm9yIG1vcmUgaW5mb3JtYXRpb24gYWJvdXQgbW9udGhseSBkYXktb2Ytd2VlayB0cmlnZ2Vycywgc2VlIElNb250aGx5RE9XVHJpZ2dlci4NCl9JRExFOzY7VHJpZ2dlcnMgdGhlIHRhc2sgd2hlb
+    iB0aGUgY29tcHV0ZXIgZ29lcyBpbnRvIGFuIGlkbGUgc3RhdGUuIEZvciBtb3JlIGluZm9ybWF0aW9uIGFib3V0IGlkbGUgdHJpZ2dlcnMsIHNlZSBJSWRsZVRyaWdnZXIuDQpfUkVHSVNUUkFUSU9OOzc
+    7VHJpZ2dlcnMgdGhlIHRhc2sgd2hlbiB0aGUgdGFzayBpcyByZWdpc3RlcmVkLiBGb3IgbW9yZSBpbmZvcm1hdGlvbiBhYm91dCByZWdpc3RyYXRpb24gdHJpZ2dlcnMsIHNlZSBJUmVnaXN0cmF0aW9uV
+    HJpZ2dlci4NCl9CT09UOzg7VHJpZ2dlcnMgdGhlIHRhc2sgd2hlbiB0aGUgY29tcHV0ZXIgYm9vdHMuIEZvciBtb3JlIGluZm9ybWF0aW9uIGFib3V0IGJvb3QgdHJpZ2dlcnMsIHNlZSBJQm9vdFRyaWd
+    nZXIuDQpfTE9HT047OTtUcmlnZ2VycyB0aGUgdGFzayB3aGVuIGEgc3BlY2lmaWMgdXNlciBsb2dzIG9uLiBGb3IgbW9yZSBpbmZvcm1hdGlvbiBhYm91dCBsb2dvbiB0cmlnZ2Vycywgc2VlIElMb2dvb
+    lRyaWdnZXIuDQpfU0VTU0lPTl9TVEFURV9DSEFOR0U7MTE7VHJpZ2dlcnMgdGhlIHRhc2sgd2hlbiBhIHNwZWNpZmljIHVzZXIgc2Vzc2lvbiBzdGF0ZSBjaGFuZ2VzLiBGb3IgbW9yZSBpbmZvcm1hdGl
+    vbiBhYm91dCBzZXNzaW9uIHN0YXRlIGNoYW5nZSB0cmlnZ2Vycywgc2VlIElTZXNzaW9uU3RhdGVDaGFuZ2VUcmlnZ2VyLg0KX0NVU1RPTV9UUklHR0VSXzAxOzEyOw0KUmVmZXJlbmNlO1JFRjtodHRwc
+    zovL2xlYXJuLm1pY3Jvc29mdC5jb20vZW4tdXMvd2luZG93cy93aW4zMi9hcGkvdGFza3NjaGQvbmUtdGFza3NjaGQtdGFza190cmlnZ2VyX3R5cGUy') | ConvertFrom-Csv -Delimiter ';'
+
+#endregion
+
+#region Audits.ps1
+#####################################################
+#    Audit script by Alan Renouf - Virtu-Al         #
+#    Blog: http://teckinfo.blogspot.com/            #
+#                                                   #
+#    Usage: Audit.ps1 'path' (sigle quotes req'd)   #
+#                                                   #
+#    The file needs to be a plain text list of      #
+#    computers to be audited one on each line       #
+#                                                   #
+#####################################################
+<#
+  Function Audits {
+  param( [string] $auditlist)
+
+
+  if ($auditlist -eq ""){
+  Write-Host "No list specified, using Localhost"
+  $targets = "localhost"
+  }
+  else
+  {
+  if ((Test-Path $auditlist) -eq $false)
+  {
+    Write-Host "Invalid audit path specified: $auditlist"
+    exit
+  }
+  else
+  {
+    Write-Host "Using Audit list: $auditlist"
+    $Targets = Get-Content $auditlist
+  }
+  }
+
+  $Date = Get-Date
+
+  Foreach ($Target in $Targets)
+  {
+  $Filename = ".\" + $Target + "_" + $date.Hour + $date.Minute + "_" + $Date.Day + "-" + $Date.Month + "-" + $Date.Year + ".htm"
+
+  # =====================================================================================================================
+  #	CREATE HTML OUTPUT
+  # =====================================================================================================================
+	
+  Write-Output " "| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '<html ES_auditInitialized='false'><head><title>Audit</title>'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "<META http-equiv=Content-Type content='text/html; charset=windows-1252'>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  # ---------- Start of Style Definition Section ------------------------------------------------------------------------
+	
+  Write-Output "<STYLE type=text/css>"| out-file -Append -encoding ASCII -filepath $Filename
+		
+  Write-Output "	DIV .expando {DISPLAY: block; FONT-WEIGHT: normal; FONT-SIZE: 8pt; RIGHT: 10px; COLOR: #ffffff; FONT-FAMILY: Tahoma; POSITION: absolute; TEXT-DECORATION: underline}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	TABLE {TABLE-LAYOUT: fixed; FONT-SIZE: 100%; WIDTH: 100%}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	#objshowhide {PADDING-RIGHT: 10px; FONT-WEIGHT: bold; FONT-SIZE: 8pt; Z-INDEX: 2; CURSOR: hand; COLOR: #000000; MARGIN-RIGHT: 0px; FONT-FAMILY: Tahoma; TEXT-ALIGN: right; TEXT-DECORATION: underline; WORD-WRAP: normal}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	.heading0_expanded {BORDER-RIGHT: #bbbbbb 1px solid; PADDING-RIGHT: 5em; BORDER-TOP: #bbbbbb 1px solid; DISPLAY: block; PADDING-LEFT: 8px; FONT-WEIGHT: bold; FONT-SIZE: 8pt; MARGIN-BOTTOM: -1px; MARGIN-LEFT: 0px; BORDER-LEFT: #bbbbbb 1px solid; WIDTH: 100%; CURSOR: hand; COLOR: #FFFFFF; MARGIN-RIGHT: 0px; PADDING-TOP: 4px; BORDER-BOTTOM: #bbbbbb 1px solid; FONT-FAMILY: Tahoma; POSITION: relative; HEIGHT: 2.25em; BACKGROUND-COLOR: #cc0000}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	.heading1 {BORDER-RIGHT: #bbbbbb 1px solid; PADDING-RIGHT: 5em; BORDER-TOP: #bbbbbb 1px solid; DISPLAY: block; PADDING-LEFT: 16px; FONT-WEIGHT: bold; FONT-SIZE: 8pt; MARGIN-BOTTOM: -1px; MARGIN-LEFT: 5px; BORDER-LEFT: #bbbbbb 1px solid; WIDTH: 100%; CURSOR: hand; COLOR: #ffffff; MARGIN-RIGHT: 0px; PADDING-TOP: 4px; BORDER-BOTTOM: #bbbbbb 1px solid; FONT-FAMILY: Tahoma; POSITION: relative; HEIGHT: 2.25em; BACKGROUND-COLOR: #7BA7C7}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	.heading2 {BORDER-RIGHT: #bbbbbb 1px solid; PADDING-RIGHT: 5em; BORDER-TOP: #bbbbbb 1px solid; DISPLAY: block; PADDING-LEFT: 16px; FONT-WEIGHT: bold; FONT-SIZE: 8pt; MARGIN-BOTTOM: -1px; MARGIN-LEFT: 5px; BORDER-LEFT: #bbbbbb 1px solid; WIDTH: 100%; CURSOR: hand; COLOR: #ffffff; MARGIN-RIGHT: 0px; PADDING-TOP: 4px; BORDER-BOTTOM: #bbbbbb 1px solid; FONT-FAMILY: Tahoma; POSITION: relative; HEIGHT: 2.25em; BACKGROUND-COLOR: #A5A5A5}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	.tableDetail {BORDER-RIGHT: #bbbbbb 1px solid; BORDER-TOP: #bbbbbb 1px solid; DISPLAY: block; PADDING-LEFT: 16px; FONT-SIZE: 8pt;MARGIN-BOTTOM: -1px; PADDING-BOTTOM: 5px; MARGIN-LEFT: 5px; BORDER-LEFT: #bbbbbb 1px solid; WIDTH: 100%; COLOR: #000000; MARGIN-RIGHT: 0px; PADDING-TOP: 4px; BORDER-BOTTOM: #bbbbbb 1px solid; FONT-FAMILY: Tahoma; POSITION: relative; BACKGROUND-COLOR: #f9f9f9}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	.filler {BORDER-RIGHT: medium none; BORDER-TOP: medium none; DISPLAY: block; BACKGROUND: none transparent scroll repeat 0% 0%; MARGIN-BOTTOM: -1px; FONT: 100%/8px Tahoma; MARGIN-LEFT: 43px; BORDER-LEFT: medium none; COLOR: #ffffff; MARGIN-RIGHT: 0px; PADDING-TOP: 4px; BORDER-BOTTOM: medium none; POSITION: relative}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	.Solidfiller {BORDER-RIGHT: medium none; BORDER-TOP: medium none; DISPLAY: block; BACKGROUND: none transparent scroll repeat 0% 0%; MARGIN-BOTTOM: -1px; FONT: 100%/8px Tahoma; MARGIN-LEFT: 0px; BORDER-LEFT: medium none; COLOR: #000000; MARGIN-RIGHT: 0px; PADDING-TOP: 4px; BORDER-BOTTOM: medium none; POSITION: relative; BACKGROUND-COLOR: #000000}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	td {VERTICAL-ALIGN: TOP; FONT-FAMILY: Tahoma}"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	th {VERTICAL-ALIGN: TOP; COLOR: #cc0000; TEXT-ALIGN: left}"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "</STYLE>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  # ---------- End of Style Definition Section --------------------------------------------------------------------------
+  # ---------- Start of Control Script Section --------------------------------------------------------------------------
+	
+  Write-Output "<SCRIPT language=vbscript>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  # ---------- Declare Global Variables for Routines --------------------------------------------------------------------
+	
+  Write-Output "	strShowHide = 1"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	strShow = "show"'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	strHide = "hide"'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	strShowAll = "show all"'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	strHideAll = "hide all"'| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "Function window_onload()"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	If UCase(document.documentElement.getAttribute("ES_auditInitialized")) <> "TRUE" Then'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		Set objBody = document.body.all"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		For Each obji in objBody"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			If IsSectionHeader(obji) Then"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				If IsSectionExpandedByDefault(obji) Then"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					ShowSection obji"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				Else"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					HideSection obji"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		Next"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		objshowhide.innerText = strShowAll"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '		document.documentElement.setAttribute "ES_auditInitialized", "true"'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "End Function"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "Function IsSectionExpandedByDefault(objHeader)"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	IsSectionExpandedByDefault = (Right(objHeader.className, Len("_expanded")) = "_expanded")'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "End Function"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "Function document_onclick()"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Set strsrc = window.event.srcElement"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	While (strsrc.className = "sectionTitle" or strsrc.className = "expando")'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		Set strsrc = strsrc.parentElement"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Wend"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	If Not IsSectionHeader(strsrc) Then Exit Function"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	ToggleSection strsrc"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	window.event.returnValue = False"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "End Function"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "Sub ToggleSection(objHeader)"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	SetSectionState objHeader, "toggle"'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "End Sub"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "Sub SetSectionState(objHeader, strState)"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	i = objHeader.sourceIndex"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Set all = objHeader.parentElement.document.all"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	While (all(i).className <> "container")'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		i = i + 1"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Wend"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Set objContainer = all(i)"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	If strState = "toggle" Then'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '		If objContainer.style.display = "none" Then'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '			SetSectionState objHeader, "show" '| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		Else"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '			SetSectionState objHeader, "hide" '| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Else"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		Set objExpando = objHeader.children.item(1)"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '		If strState = "show" Then'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '			objContainer.style.display = "block" '| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			objExpando.innerText = strHide"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output '		ElseIf strState = "hide" Then'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '			objContainer.style.display = "none" '| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			objExpando.innerText = strShow"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "End Sub"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "Function objshowhide_onClick()"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Set objBody = document.body.all"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	Select Case strShowHide"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		Case 0"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			strShowHide = 1"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			objshowhide.innerText = strShowAll"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			For Each obji In objBody"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				If IsSectionHeader(obji) Then"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					HideSection obji"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			Next"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		Case 1"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			strShowHide = 0"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			objshowhide.innerText = strHideAll"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			For Each obji In objBody"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				If IsSectionHeader(obji) Then"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					ShowSection obji"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				End If"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			Next"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	End Select"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "End Function"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output 'Function IsSectionHeader(obj) : IsSectionHeader = (obj.className = "heading0_expanded") Or (obj.className = "heading1_expanded") Or (obj.className = "heading1") Or (obj.className = "heading2"): End Function'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output 'Sub HideSection(objHeader) : SetSectionState objHeader, "hide" : End Sub'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output 'Sub ShowSection(objHeader) : SetSectionState objHeader, "show": End Sub'| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "</SCRIPT>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  # ---------- End of Control Script Section ----------------------------------------------------------------------------
+	
+  Write-Output "	</HEAD>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  # ---------- End of Head Section --------------------------------------------------------------------------------------
+	
+  # ---------- Start of Body Section ------------------------------------------------------------------------------------
+	
+  Write-Output "<BODY>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	<p><b><font face="Arial" size="5">'$Target' Audit<hr size="8" color="#CC0000"></font></b>'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	<font face="Arial" size="1"><b><i>Version 1.0 by Alan Renouf (Virtu-Al)</i></b></font><br>'| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output '	<font face="Arial" size="1">Report generated on ' (Get-Date) '</font></p>'| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Write-Output "<TABLE cellSpacing=0 cellPadding=0>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<TBODY>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<TR>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<TD>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<DIV id=objshowhide tabIndex=0><FONT face=Arial></FONT></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</TD>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</TR>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</TBODY>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+
+  write-output "Writing Detail for $Target"
+  $ComputerSystem = Get-WmiObject -computername $Target Win32_ComputerSystem
+  switch ($ComputerSystem.DomainRole)
+  {
+    0 { $ComputerRole = "Standalone Workstation" }
+    1 { $ComputerRole = "Member Workstation" }
+    2 { $ComputerRole = "Standalone Server" }
+    3 { $ComputerRole = "Member Server" }
+    4 { $ComputerRole = "Domain Controller" }
+    5 { $ComputerRole = "Domain Controller" }
+    default { $ComputerRole = "Information not available" }
+  }
+	
+  $OperatingSystems = Get-WmiObject -computername $Target Win32_OperatingSystem
+  $TimeZone = Get-WmiObject -computername $Target Win32_Timezone
+  $Keyboards = Get-WmiObject -computername $Target Win32_Keyboard
+  $SchedTasks = Get-WmiObject -computername $Target Win32_ScheduledJob
+	
+  $BootINI = $OperatingSystems.SystemDrive + "boot.ini"
+	
+  $RecoveryOptions = Get-WmiObject -computername $Target Win32_OSRecoveryConfiguration
+	
+  # ---------- Start of COMPUTER DETAILS Section HTML Code --------------------------------------------------------------
+	
+  Write-Output "<DIV class=heading0_expanded>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<SPAN class=sectionTitle tabIndex=0>$target Details</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  # ---------- Start of COMPUTER DETAILS - GENERAL Sub Section HTML Code ------------------------------------------------
+  write-output "..Computer Details"
+	
+  Write-Output "<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<SPAN class=sectionTitle tabIndex=0>General</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Computer Name</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'> " $ComputerSystem.Name "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Computer Role</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'> $ComputerRole </font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  switch ($ComputerRole)
+  {
+    "Member Workstation" { Write-Output "					<th width='25%'><b>Computer Domain</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename	}
+    "Domain Controller" { Write-Output "					<th width='25%'><b>Computer Domain</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename	 }
+    "Member Server" { Write-Output "					<th width='25%'><b>Computer Domain</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename	 }
+    default { Write-Output "					<th width='25%'><b>Computer Workgroup</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename}
+  }
+	
+  Write-Output "					<td width='75%'>" $ComputerSystem.Domain "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Operating System</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $OperatingSystems.Caption "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Service Pack</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $OperatingSystems.CSDVersion "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>System Root</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $OperatingSystems.SystemDrive "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Manufacturer</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $ComputerSystem.Manufacturer "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Model</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $ComputerSystem.Model "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Number of Processors</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $ComputerSystem.NumberOfProcessors "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Memory</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $ComputerSystem.TotalPhysicalMemory "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Registered User</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $ComputerSystem.PrimaryOwnerName "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<th width='25%'><b>Registered Organisation</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<td width='75%'>" $OperatingSystems.Organization "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "   				<th width='25%'><b>Last System Boot</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  $LBTime=$OperatingSystems.ConvertToDateTime($OperatingSystems.Lastbootuptime)
+  Write-Output "					<td width='75%'>" $LBTime "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - GENERAL Sub-section HTML Code --------------------------------------------------
+	
+  # ---------- Start of COMPUTER DETAILS - HOFIXES Sub-section HTML Code ------------------------------------------------
+	
+  write-output "..Hotfix Information"
+	
+  $colQuickFixes = Get-WmiObject Win32_QuickFixEngineering
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>HotFixes</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='25%'><b>HotFix Number</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='75%'><b>Description</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  ForEach ($objQuickFix in $colQuickFixes)
+  {
+    if ($objQuickFix.HotFixID -ne "File 1")
+    {
+      Write-Output "				<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					<td width='25%'>" $objQuickFix.HotFixID "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					<td width='75%'>" $objQuickFix.Description "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "				</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+  }
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - HOFIXES Sub-section HTML Code --------------------------------------------------
+	
+  #---------- Start of COMPUTER DETAILS - LOGICAL DISK CONFIGURATION Sub-section HTML Code -----------------------------
+	
+  write-output "..Logical Disks"
+	
+  $colDisks = Get-WmiObject -ComputerName $Target Win32_LogicalDisk
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>Logical Disk Configuration</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='15%'><b>Drive Letter</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='20%'><b>Label</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='20%'><b>File System</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='15%'><b>Disk Size</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='15%'><b>Disk Free Space</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='15%'><b>% Free Space</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Foreach ($objDisk in $colDisks)
+  {
+    if ($objDisk.DriveType -eq 3)
+    {
+      Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='15%'>"$objDisk.DeviceID"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output " 						<td width='20%'>"$objDisk.VolumeName"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output " 						<td width='20%'>"$objDisk.FileSystem"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      $disksize = [math]::round(($objDisk.size / 1048576))
+      Write-Output " 						<td width='15%'>"$disksize" MB</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      $freespace = [math]::round(($objDisk.FreeSpace / 1048576))
+      Write-Output " 						<td width='15%'>"$Freespace" MB</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      $percFreespace=[math]::round(((($objDisk.FreeSpace / 1048576)/($objDisk.Size / 1048676)) * 100),0)
+      Write-Output " 						<td width='15%'>"$percFreespace" %</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+  }
+	
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  # ---------- End of COMPUTER DETAILS - LOGICAL DISK CONFIGURATION Sub-section HTML Code -------------------------------
+  # ---------- Start of COMPUTER DETAILS - NIC CONFIGURATION Sub-section HTML Code --------------------------------------
+	
+  write-output "..Network Configuration"
+	
+  $NICCount = 0
+  $colAdapters = Get-WmiObject -ComputerName $Target Win32_NetworkAdapterConfiguration
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>NIC Configuration</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  $NICCount = 0
+  Foreach ($objAdapter in $colAdapters)
+  {
+    if ($objAdapter.IPEnabled -eq "True")
+    {
+      $NICCount = $NICCount + 1
+      If ($NICCount -gt 1)
+      {
+        Write-Output "			</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+        Write-Output "				<DIV class=Solidfiller></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+        Write-Output "			<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+      }
+    Write-Output "  					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	 					<th width='25%'><b>Description</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "    					<td width='75%'>" $objAdapter.Description "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<th width='25%'><b>Physical address</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<td width='75%'>" $objAdapter.MACaddress "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output " 					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    If ($objAdapter.IPAddress -ne $Null)
+    {
+      Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<th width='25%'><b>IP Address / Subnet Mask</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='75%'>" $objAdapter.IPAddress " / " $objAdapter.IPSubnet "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<th width='25%'><b>Default Gateway</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='75%'>" $objAdapter.DefaultIPGateway "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+		
+    }
+    Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<th width='25%'><b>DHCP enabled</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    If ($objAdapter.DHCPEnabled -eq "True")
+    {
+      Write-Output "						<td width='75%'>Yes</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Else
+    {
+      Write-Output "						<td width='75%'>No</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "							<th width='25%'><b>DNS Servers</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "							<td width='75%'>"| out-file -Append -encoding ASCII -filepath $Filename
+    If ($objAdapter.DNSServerSearchOrder -ne $Null)
+    {
+      Write-Output $objAdapter.DNSServerSearchOrder | out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<th width='25%'><b>Primary WINS Server</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<td width='75%'>" $objAdapter.WINSPrimaryServer "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<th width='25%'><b>Secondary WINS Server</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<td width='75%'>" $objAdapter.WINSSecondaryServer "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    $NICCount = $NICCount + 1
+    }
+  }
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - NIC CONFIGURATION Sub-section HTML Code ----------------------------------------
+	
+  #---------- Start of COMPUTER DETAILS - Software Sub-section HTML Code -------------------------------------------
+	
+  if ((get-wmiobject -namespace "root/cimv2" -list) | ? {$_.name -match "Win32_Product"})
+  {
+    write-output "..Installed Software"
+	
+    $colShares = get-wmiobject -ComputerName $Target Win32_Product | select Name,Version,Vendor,InstallDate
+		
+    Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			<SPAN class=sectionTitle tabIndex=0>Software</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  						<th width='25%'><b>Name</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  						<th width='25%'><b>Version</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  						<th width='25%'><b>Vendor</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  						<th width='25%'><b>Install Date</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+		
+    Foreach ($objShare in $colShares)
+    {
+      Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='50%'>" $objShare.Name "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='20%'>" $objShare.Version "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='15%'>" $objShare.Vendor "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='15%'>" $objShare.InstallDate "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+		
+  }
+  # ---------- End of COMPUTER DETAILS - Software Sub-section HTML Code ---------------------------------------------
+	
+  #---------- Start of COMPUTER DETAILS - LOCAL SHARES Sub-section HTML Code -------------------------------------------
+	
+  write-output "..Local Shares"
+	
+  $colShares = Get-wmiobject -ComputerName $Target Win32_Share
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>Local Shares</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='25%'><b>Share</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='25%'><b>Path</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  						<th width='50%'><b>Comment</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Foreach ($objShare in $colShares)
+  {
+    Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<td width='25%'>" $objShare.Name "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<td width='25%'>" $objShare.Path "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "						<td width='50%'>" $objShare.Caption "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  }
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - LOCAL SHARES Sub-section HTML Code ---------------------------------------------
+	
+  #---------- Start of COMPUTER DETAILS - PRINTERS Sub-section HTML Code -----------------------------------------------
+	
+  Write-output "..Printers"
+	
+  $colInstalledPrinters =  Get-WmiObject -ComputerName $Target Win32_Printer
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>Printers</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "						<th width='25%'><b>Printer</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "						<th width='25%'><b>Location</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "						<th width='25%'><b>Default Printer</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "						<th width='25%'><b>Portname</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Foreach ($objPrinter in $colInstalledPrinters)
+  {
+    If ($objPrinter.Name -eq "")
+    {
+      Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='100%'>No Printers Installed</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Else
+    {
+      Write-Output "					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='25%'>" $objPrinter.Name "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='25%'>" $objPrinter.Location "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      if ($objPrinter.Default -eq "True")
+      {
+        Write-Output "						<td width='25%'>Yes</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      }
+      Else
+      {
+        Write-Output "						<td width='25%'>No</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      }
+      Write-Output "						<td width='25%'>"$objPrinter.Portname"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Write-Output "					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  }
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - PRINTERS Sub-section HTML Code -------------------------------------------------
+	
+  #---------- Start of COMPUTER DETAILS - SERVICES Sub-section HTML Code -----------------------------------------------
+	
+  Write-Output "..Services"
+	
+  $colListOfServices = Get-WmiObject -ComputerName $Target Win32_Service
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>Services</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<th width='20%'><b>Name</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<th width='20%'><b>Account</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<th width='20%'><b>Start Mode</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<th width='20%'><b>State</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<th width='20%'><b>Expected State</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  Foreach ($objService in $colListOfServices)
+  {
+    Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	 					<td width='20%'>"$objService.Caption"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	 					<td width='20%'>"$objService.Startname"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	 					<td width='20%'>"$objService.StartMode"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    If ($objService.StartMode -eq "Auto")
+    {
+      if ($objService.State -eq "Stopped")
+      {
+        Write-Output "						<td width='20%'><font color='#FF0000'>"$objService.State"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+        Write-Output "						<td width='25%'><font face='Wingdings'color='#FF0000'>û</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      }
+    }
+    If ($objService.StartMode -eq "Auto")
+    {
+      if ($objService.State -eq "Running")
+      {
+        Write-Output "						<td width='20%'><font color='#009900'>"$objService.State"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+        Write-Output "						<td width='20%'><font face='Wingdings'color='#009900'>ü</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      }
+    }
+    If ($objService.StartMode -eq "Disabled")
+    {
+      If ($objService.State -eq "Running")
+      {
+        Write-Output "						<td width='20%'><font color='#FF0000'>"$objService.State"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+        Write-Output "						<td width='25%'><font face='Wingdings'color='#FF0000'>û</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      }
+    }
+    If ($objService.StartMode -eq "Disabled")
+    {
+      if ($objService.State -eq "Stopped")
+      {
+        Write-Output "						<td width='20%'><font color='#009900'>"$objService.State"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+        Write-Output "						<td width='20%'><font face='Wingdings'color='#009900'>ü</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      }
+    }
+    If ($objService.StartMode -eq "Manual")
+    {
+      Write-Output "						<td width='20%'><font color='#009900'>"$objService.State"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='20%'><font face='Wingdings'color='#009900'>ü</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    If ($objService.State -eq "Paused")
+    {
+      Write-Output "						<td width='20%'><font color='#FF9933'>"$objService.State"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "						<td width='20%'><font face='Wingdings'color='#009900'>ü</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Write-Output "  					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  }
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - SERVICES Sub-section HTML Code -------------------------------------------------
+	
+  #---------- Start of COMPUTER DETAILS - REGIONAL SETTINGS Sub-section HTML Code --------------------------------------
+	
+  Write-Output "..Regional Options"
+	
+  $ObjKeyboards = Get-WmiObject -ComputerName $Target Win32_Keyboard
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>Regional Settings</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<th width='25%'><b>Time Zone</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<td width='75%'>" $TimeZone.Description "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<th width='25%'><b>Country Code</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	 					<td width='75%'>" $OperatingSystems.Countrycode "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		 				<th width='25%'><b>Locale</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		 				<td width='75%'>" $OperatingSystems.Locale"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		 				<th width='25%'><b>Operating System Language</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		 				<td width='75%'>" $OperatingSystems.OSLanguage"</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  switch ($ObjKeyboards.Layout)
+  {
+    "00000402"{ $keyb = "BG" }
+    "00000404"{ $keyb = "CH" }
+    "00000405"{ $keyb = "CZ" }
+    "00000406"{ $keyb = "DK" }
+    "00000407"{ $keyb = "GR" }
+    "00000408"{ $keyb = "GK" }
+    "00000409"{ $keyb = "US" }
+    "0000040A"{ $keyb = "SP" }
+    "0000040B"{ $keyb = "SU" }
+    "0000040C"{ $keyb = "FR" }
+    "0000040E"{ $keyb = "HU" }
+    "0000040F"{ $keyb = "IS" }
+    "00000410"{ $keyb = "IT" }
+    "00000411"{ $keyb = "JP" }
+    "00000412"{ $keyb = "KO" }
+    "00000413"{ $keyb = "NL" }
+    "00000414"{ $keyb = "NO" }
+    "00000415"{ $keyb = "PL" }
+    "00000416"{ $keyb = "BR" }
+    "00000418"{ $keyb = "RO" }
+    "00000419"{ $keyb = "RU" }
+    "0000041A"{ $keyb = "YU" }
+    "0000041B"{ $keyb = "SL" }
+    "0000041C"{ $keyb = "US" }
+    "0000041D"{ $keyb = "SV" }
+    "0000041F"{ $keyb = "TR" }
+    "00000422"{ $keyb = "US" }
+    "00000423"{ $keyb = "US" }
+    "00000424"{ $keyb = "YU" }
+    "00000425"{ $keyb = "ET" }
+    "00000426"{ $keyb = "US" }
+    "00000427"{ $keyb = "US" }
+    "00000804"{ $keyb = "CH" }
+    "00000809"{ $keyb = "UK" }
+    "0000080A"{ $keyb = "LA" }
+    "0000080C"{ $keyb = "BE" }
+    "00000813"{ $keyb = "BE" }
+    "00000816"{ $keyb = "PO" }
+    "00000C0C"{ $keyb = "CF" }
+    "00000C1A"{ $keyb = "US" }
+    "00001009"{ $keyb = "US" }
+    "0000100C"{ $keyb = "SF" }
+    "00001809"{ $keyb = "US" }
+    "00010402"{ $keyb = "US" }
+    "00010405"{ $keyb = "CZ" }
+    "00010407"{ $keyb = "GR" }
+    "00010408"{ $keyb = "GK" }
+    "00010409"{ $keyb = "DV" }
+    "0001040A"{ $keyb = "SP" }
+    "0001040E"{ $keyb = "HU" }
+    "00010410"{ $keyb = "IT" }
+    "00010415"{ $keyb = "PL" }
+    "00010419"{ $keyb = "RU" }
+    "0001041B"{ $keyb = "SL" }
+    "0001041F"{ $keyb = "TR" }
+    "00010426"{ $keyb = "US" }
+    "00010C0C"{ $keyb = "CF" }
+    "00010C1A"{ $keyb = "US" }
+    "00020408"{ $keyb = "GK" }
+    "00020409"{ $keyb = "US" }
+    "00030409"{ $keyb = "USL" }
+    "00040409"{ $keyb = "USR" }
+    "00050408"{ $keyb = "GK" }
+    default { $keyb = "Unknown" }
+  }
+
+
+  Write-Output "		 				<th width='25%'><b>Keyboard Layout</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		 				<td width='75%'>" $keyb "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</div>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - REGIONAL SETTINGS Sub-section HTML Code ----------------------------------------
+  #---------- Start of COMPUTER DETAILS - EVENT LOGS Sub-section HTML Code ---------------------------------------------
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading1>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>Event Logs</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- Start of COMPUTER DETAILS - EVENT LOGS - EVENT LOG SETTINGS Sub-section HTML Code ------------------------
+	
+  Write-Output "..Event Log Settings"
+	
+  $colLogFiles = Get-WmiObject -ComputerName $Target Win32_NTEventLogFile
+	
+  Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=heading2>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<SPAN class=sectionTitle tabIndex=0>Event Log Settings</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "    					<th width='25%'><b>Log Name</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "    					<th width='25%'><b>Overwrite Outdated Records</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "  					  	<th width='25%'><b>Maximum Size</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					   	<th width='25%'><b>Current Size</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output " 					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  ForEach ($objLogFile in $colLogfiles)
+  {
+    Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	 					<td width='25%'>" $objLogFile.LogFileName "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    If ($objLogfile.OverWriteOutdated -lt 0)
+    {
+      Write-Output "	 					<td width='25%'>Never</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    if ($objLogFile.OverWriteOutdated -eq 0)
+    {
+      Write-Output "	 					<td width='25%'>As needed</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Else
+    {
+      Write-Output "	 					<td width='25%'>After " $objLogFile.OverWriteOutdated " days</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Write-Output "	 					<td width='25%'>" (($objLogfile.MaxFileSize)/1024) " KB</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "	 					<td width='25%'>" (($objLogfile.FileSize)/1024) " KB</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+  }
+  Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+  Write-Output "	<DIV class=filler></DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+	
+  #---------- End of COMPUTER DETAILS - EVENT LOGS - EVENT LOG SETTINGS Sub-section HTML Code --------------------------
+  # ---------- Start of COMPUTER DETAILS - EVENT LOGS - ERROR ENTRIES Sub-section HTML Code -----------------------------
+	
+    write-output "..Event Log Errors"
+		
+    $WmidtQueryDT = [System.Management.ManagementDateTimeConverter]::ToDmtfDateTime([DateTime]::Now.AddDays(-14))
+    $colLoggedEvents = Get-WmiObject -computer "Localhost" -query ("Select * from Win32_NTLogEvent Where Type='Error' and TimeWritten >='" + $WmidtQueryDT + "'")
+	
+    Write-Output "	<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		<DIV class=heading2>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			<SPAN class=sectionTitle tabIndex=0>ERROR Entries</SPAN>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			<A class=expando href='#'></A>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		<DIV class=container>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			<DIV class=tableDetail>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "				<TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "    					<th width='10%'><b>Event Code</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "   					<th width='10%'><b>Source Name</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "    					<th width='15%'><b>Time</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "    					<th width='10%'><b>Log</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "    					<th width='55%'><b>Message</b></font></th>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "  					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    ForEach ($objEvent in $colLoggedEvents)
+    {
+      $dtmEventDate = $ObjEvent.ConvertToDateTime($objEvent.TimeWritten)
+      Write-Output " 					<tr>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "	 					<td width='10%'>" $objEvent.EventCode "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "	 					<td width='10%'>" $objEvent.SourceName "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "	 					<td width='15%'>" $dtmEventDate "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "	 					<td width='10%'>" $objEvent.LogFile "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "	 					<td width='55%'>" $objEvent.Message "</font></td>"| out-file -Append -encoding ASCII -filepath $Filename
+      Write-Output "  					</tr>"| out-file -Append -encoding ASCII -filepath $Filename
+    }
+    Write-Output "				</TABLE>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "			</DIV>"| out-file -Append -encoding ASCII -filepath $Filename
+    Write-Output "		</DI"
+  }
+#>
+#endregion
+
+#region XLSugars.ps1
+
+#region Initialize Tools
+    Function Install-OpenXmlSDK
+    {
+        Param
+        (
+            [Switch]$Archive = $true,
+            $outPath = 'C:\temp\'
+        )
+        Switch ($Archive.IsPresent)
+        {
+            $false
+            { # MS (Nuget)
+                Install-Package DocumentFormat.OpenXml -Version 2.15.0
+            }
+            $true
+            { # WebArchive
+
+              $webUrls = 
+                    'File,Link
+                  OpenXMLSDKV25.msi,https://web.archive.org/web/20200802184651/https://download.microsoft.com/download/5/5/3/553C731E-9333-40FB-ADE3-E02DC9643B31/OpenXMLSDKV25.msi
+                    OpenXMLSDKToolV25.msi,https://web.archive.org/web/20200802184651/https://download.microsoft.com/download/5/5/3/553C731E-9333-40FB-ADE3-E02DC9643B31/OpenXMLSDKToolV25.msi' | ConvertFrom-Csv
+    
+                ForEach ($url in $webUrls)
+                {
+                    Invoke-WebRequest $url.Link -OutFile ($outPath + $url.File) -Verbose
+                }
+                <#
+                    Install Code
+
+                    $f = gci ($outPath + $url.File)
+                    $in = $f.FullName
+                    $out = $f.Directory.FullName + "\out"
+                    msiexec /a "$in" TARGETDIR="$out" /qn
+                #>
+                <#
+                    Param
+                    (
+                        [string]$collectionUrl = "https://vsrm.dev.azure.com/{organization}",
+                        [string]$project = "0522TFVCScrum",
+                        [string]$releaseid = "35",
+                        [string]$filename = "D:\temp\ReleaseLogs_$releaseid.zip",
+                        [string]$user = "username",
+                        [string]$token = "password/PAT"
+                    )
+
+                    # Base64-encodes the Personal Access Token (PAT) appropriately
+                        $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(("{0}:{1}" -f $user,$token)))
+
+                    $uri = "$collectionUrl/$project/_apis/Release/releases/$releaseid/logs"
+
+                    Invoke-RestMethod -Uri $uri -Method Get -ContentType "application/zip" -Headers @{Authorization=("Basic {0}" -f $base64AuthInfo)} -OutFile $filename                #>
+
+            }
+        }
+
+    }
+
+    Function Convert-XlmsXlsx
+    {
+        Param
+        (
+            [Parameter(HelpMessage="Source xlsm path")]$SourcePath = "C:\Workbooks\ExampleMacroWorkbook.xlsm",
+            [Parameter(HelpMessage="Export xlsx path")]$DestPath = "C:\Workbooks\ConvertedWorkbook.xlsx"
+        )
+
+        Function Dec64 { Param($a) $b = [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String($a));Return $b };
+
+        $Assemblies =
+        (
+            "windowsbase, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35",
+            "DocumentFormat.OpenXml, Version=2.5.5631.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"
+        )
+
+        $SourceCode = (Dec64 'dXNpbmcgU3lzdGVtOw0KdXNpbmcgU3lzdGVtLklPOw0KdXNpbmcgRG9jdW1lbnRGb3JtYXQuT3BlblhtbDsNCnVzaW5nIERvY3VtZW50Rm9ybWF0Lk9wZW5YbWwuUGFja2FnaW5nOw0KdXNpbmcgRG9jdW1lbnRGb3JtYXQuT3BlblhtbC5TcHJlYWRzaGVldDsNCg0KcHVibGljIGNsYXNzIENvbnZlcnRTaGVldA0Kew0KICAgIHB1YmxpYyBzdGF0aWMgdm9pZCBDb252ZXJ0VG9YbHN4KHN0cmluZyBmaWxlTmFtZSwgc3RyaW5nIG91dHB1dEZpbGUpDQogICAgew0KICAgICAgICB1c2luZyAodmFyIGlucHV0U3RyZWFtID0gRmlsZS5PcGVuUmVhZChmaWxlTmFtZSkpDQogICAgICAgIHVzaW5nICh2YXIgb3V0U3RyZWFtID0gbmV3IE1lbW9yeVN0cmVhbSgpKSANCiAgICAgICAgew0KICAgICAgICAgICAgaW5wdXRTdHJlYW0uQ29weVRvKG91dFN0cmVhbSk7DQogICAgICAgICAgICB1c2luZyAodmFyIGRvYyA9IFNwcmVhZHNoZWV0RG9jdW1lbnQuT3BlbihvdXRTdHJlYW0sIHRydWUpKSANCiAgICAgICAgICAgIHsNCiAgICAgICAgICAgICAgICBkb2MuRGVsZXRlUGFydHNSZWN1cnNpdmVseU9mVHlwZTxWYmFEYXRhUGFydD4oKTsNCiAgICAgICAgICAgICAgICBkb2MuRGVsZXRlUGFydHNSZWN1cnNpdmVseU9mVHlwZTxWYmFQcm9qZWN0UGFydD4oKTsNCiAgICAgICAgICAgICAgICBkb2MuQ2hhbmdlRG9jdW1lbnRUeXBlKERvY3VtZW50Rm9ybWF0Lk9wZW5YbWwuU3ByZWFkc2hlZXREb2N1bWVudFR5cGUuV29ya2Jvb2spOw0KICAgICAgICAgICAgfQ0KICAgICAgICAgICAgRmlsZS5Xcml0ZUFsbEJ5dGVzKG91dHB1dEZpbGUsIG91dFN0cmVhbS5Ub0FycmF5KCkpOw0KICAgICAgICB9DQogICAgfQ0KfQ==')
+        Add-Type -ReferencedAssemblies $Assemblies -TypeDefinition $SourceCode -Language CSharp
+
+        If (Test-Path -Path $DestPath -PathType Leaf) {Remove-Item -Path $DestPath -Force}
+
+        [ConvertSheet]::ConvertToXlsx($SourcePath,$DestPath)
+        # Disclaimer - I am not by any means a C sharp programmer so apologies if you run into any issues using this!
+    }
+
+    Function Find-OpenXmlDLL
+    {
+        # Locate OpenXml DLL Path
+            Param ( $srchTxt )
+            $currPath = (Get-ChildItem)[-1].DirectoryName
+            Set-Location HKLM:\\SOFTWARE\Classes\Installer\Assemblies
+            $dllPath = Get-ChildItem . -rec -ea SilentlyContinue | ForEach-Object { if((get-itemproperty -Path $_.PsPath) -match $srchTxt) { $_.PsPath} }
+            Set-Location $currPath
+            Do { $dllPath = $dllPath -replace "^\w+[^\\]+\\" } While ( $dllPath -match "\\" )
+            $dllPath = $dllPath -replace "\|","\"
+            Return $dllPath
+    }
+    Install-Module ImportExcel -Force
+    Import-Module ImportExcel
+    Get-Command -Module ImportExcel
+#endregion
+#region Initialize Vars
+    $trgXlsx = "C:\Users\Chuck\OneDrive\Documents\Razzak Info - Copy.xlsx"
+    $dllPath = Find-OpenXmlDLL 'OpenXml.dll'
+    $sheetName = 'TrackingSheet'
+    $shtRange = @{
+                   StartRow = 1
+                   StartColumn = 'a'
+                   EndRow = 36
+                   EndColumn = 'J'
+                }
+    $PatientName = @{
+                   Row = 2
+                   Column = 'B'
+                }
+    $Month = @{
+                   Row = 2
+                   Column = 'D'
+                }
+    #region Convert Colums to intergers (if needed)
+        If ($shtRange.EndColumn -is [string]) { $shtRange.EndColumn = ($shtRange.EndColumn).ToLower() }
+        If ($shtRange.StartColumn -is [string]) { $shtRange.StartColumn = ($shtRange.StartColumn).ToLower() }
+    
+        If ($shtRange.StartColumn -is [string]) { $shtRange.EndColumn = [int][char]$shtRange.EndColumn - ([int][char]$shtRange.StartColumn - 1) }
+        If ($shtRange.StartColumn -is [string]) { $shtRange.StartColumn = [int][char]$shtRange.StartColumn - ([int][char]$shtRange.StartColumn - 1) }
+
+        If ($PatientName.Column -is [string]) { $PatientName.Column = ($PatientName.Column).ToLower() }
+        If ($PatientName.Column -is [string]) { $PatientName.Column = [int][char]$PatientName.Column - 96 }
+
+        If ($Month.Column -is [string]) { $Month.Column = ($Month.Column).ToLower() }
+        If ($Month.Column -is [string]) { $Month.Column = [int][char]$Month.Column - 96 }
+    #endregion
+
+    [System.Reflection.Assembly]::LoadFrom($dllPath) | out-null
+    [Reflection.Assembly]::LoadWithPartialName("DocumentFormat.OpenXml") | out-null
+    [Reflection.Assembly]::LoadWithPartialName("DocumentFormat.OpenXml.Packaging") | out-null
+    [Reflection.Assembly]::LoadWithPartialName("DocumentFormat.OpenXml.Spreadsheet") | out-null
+    [Reflection.Assembly]::LoadWithPartialName("OpenXmlPowerTools") | out-null
+#endregion
+
+#region Load Form
+    $xlSubSheet1 = Import-Excel -Path $trgXlsx -WorksheetName $sheetName -StartRow 1 -EndRow 2
+    $xlSubSheet2 = (Import-Excel -Path $trgXlsx -WorksheetName $sheetName `
+                            -StartRow 4 -StartColumn $shtRange.StartColumn  `
+                            -EndRow $shtRange.EndRow -EndColumn $shtRange.EndColumn)
+    # $xlSubSheet2 | Convertfrom-csv
+#endregion
+
+# Input Form Data
+    #region $xlSubSheet1
+         $xlSubSheet1.Month = ($dataMonth = ((get-date).AddMonths(0)).ToString("MMMM yyyy"))
+         $xlSubSheet1.Name  = ($dataPatient = "Charles Mella")
+    #endregion
+    #region $xlSubSheet2
+         $xlSubSheet2.
+
+    #endregion
+<##>
+<##>
+
+
+<#
+
+  [DocumentFormat.OpenXml.Packaging.SpreadsheetDocument]$Document = $null
+  $Document = [DocumentFormat.OpenXml.Packaging.SpreadsheetDocument]::Open($trgXlsx, $false)
+ 
+  [DocumentFormat.OpenXml.Packaging.WorkbookPart]$WorkBookPart = $Document.WorkbookPart
+  [DocumentFormat.OpenXml.Spreadsheet.Workbook]$WorkBook = $WorkBookPart.Workbook
+
+  [DocumentFormat.OpenXml.Packaging.WorksheetPart]$WorkSheetPart = $WorkBookPart.GetPartById($Workbook.Sheets.FirstChild.Id)
+  [DocumentFormat.OpenXml.Spreadsheet.Cell]$Cell = $null
+ 
+  $Cells1 = $WorkSheetPart.Worksheet.Descendants()
+ 
+  [DocumentFormat.OpenXml.Packaging.SharedStringTablePart]$stringTablePart = $null
+  $stringTablePart = $WorkBookPart.SharedStringTablePart
+  $stringTable = $stringTablePart.SharedStringTable.Elements()
+ 
+  foreach($Cell1 in $Cells1) {
+  if ($Cell1.LocalName -eq "c") {
+                if ($Cell1.DataType.Value -eq "SharedString") {
+                                Write-Host $Cell1.CellReference.Value $stringTable[$Cell1.InnerText].InnerText
+                } else {
+                                Write-Host $Cell1.CellReference.Value $Cell1.InnerText
+                }
+  }
+  }
+ 
+  $Document.Close()
+#>
+
+$Excel = New-Object -ComObject Excel.Application 
+$Workbook = $Excel.Workbooks.Open($trgXlsx)
+$workSheet = $Workbook.Sheets | Where-Object name -eq $sheetName #.Item(1)
+$WorkSheet.Name
+
+
+$Found = $WorkSheet.Cells.Find('*breakfast*') # We will begin searching for our data -- in this case, it is "Nebraska" -- using the Cells.Find() method and supplying the search string as the method parameter. If it does find data, it will be available to view as an object and also will be used as a parameter value in another method.
+
+# In this case, I found a cell that has "Nebraska" in it. Now we can take the object returned and use it to find the address of the data and save it as the beginning address to show the first item we found. At some point in our search, it will come back to the first match, so we want to stop when we get to that point.
+
+$BeginAddress = $Found.Address(0,0,1,1)
+$BeginAddress
+
+# I now have enough information to build a PowerShell object that contains the data found, as well as the column and row information and the address that I showed in the image above.
+
+[pscustomobject]@{
+    WorkSheet = $Worksheet.Name
+    Column = $Found.Column
+    Row =$Found.Row
+    Text = $Found.Text
+    Address = $BeginAddress
+}
+
+#From here, we want to continue the search until we reach the top of our matches.
+
+Do {
+    $Found = $WorkSheet.Cells.FindNext($Found)
+    $Address = $Found.Address(0,0,1,1)
+    If ($Address -eq $BeginAddress) {
+        BREAK
+    }
+    [pscustomobject]@{
+        WorkSheet = $Worksheet.Name
+        Column = $Found.Column
+        Row =$Found.Row
+        Text = $Found.Text
+        Address = $Address
+    }                 
+} Until ($False)
+# Here, you can see that I use the $found object from the initial search as the parameter value in the Cells.FindNext() method. I keep track of each address of the subsequent matches and as soon as I come across the first address, I break out of the Do loop so I do not have duplicate data showing up. Once this completes, I find a total of 38 matches on this particular sheet. Now I know how many times "Nebraska" shows up in the spreadsheet, and where.
+
+# I also want to add that you can use wild-card searches in these examples. Using an asterisk (*) will search for multiple characters, and using a question mark (?) will only assume a single character wild-card match to look for.
+
+# Something like this would make for a great function, right? Well, I agree, and wrote a small function that you can use to search a full workbook for some data and have it return the data I provided above, but also across all of the worksheets. The full code, called "Search-Excel," is available at the end of this article and takes parameters of the full file path and the search string.
+
+Search-Excel -Source 'C:\users\proxb\Downloads\Sample - Superstore.xls' -SearchText Nebraska | Format-Table
+
+# As you can see, it finds all of the "Nebraska" entries under the Orders sheet but doesn't find anything on the other two sheets.
+
+# You can use PowerShell to search for various pieces of data within an Excel workbook to include all of the worksheets, which can be useful to quickly determine how much of a particular piece of data is in the workbook. Or you can use it to quickly scan an Excel document for sensitive data. Either way, this will hopefully be a useful tool for your PowerShell toolbox!
+#endregion
+
+#region Lottery
+    Function Get-Lottery {$ofs = ','; $lottery = (1..49 | Get-Random -Count 7 | Sort-Object );"Your numbers are $lottery"}
+#endregion
+
+#region Gateway NIC
+    function Get-GatewayAdapter
+    {
+        $GatewayIndex = (Get-WmiObject -Class Win32_IP4RouteTable | Where-Object { $_.destination -eq '0.0.0.0' -and $_.mask -eq '0.0.0.0'} | Sort-Object metric1).interfaceindex #| select nexthop, metric1, interfaceindex
+        $GatewayNIC = (Get-NetAdapter -IncludeHidden | Where-Object{ $_.ifIndex -eq $GatewayIndex}).Name
+        Return $GatewayNIC
+    }
+
+    function Start-ConnectionMonitoring
+    {
+        Param
+        (
+            $isp,
+            $gateway,
+            $Logfile,
+            [int]$Delay = 10,
+            [Ipaddress] $adapter,
+            [switch]$ispPopup,
+            [switch]$gateWayPopup
+        )
+        $spacer = '-' * 26
+        while($true)
+        {
+            if (!(Test-Connection $gateway -source $adapter -count 1 -ea Ignore))
+            {
+                get-date | Add-Content -path $Logfile
+                "$gateWay Connection Failure" | Add-Content -Path $Logfile
+                $outagetime = Start-ContinousPing -address $gateway -adapter $adapter -Delay $Delay
+                "Total Outage time in Seconds: $outageTime" | Add-Content -path $Logfile
+                if ($gateWayPopup)
+                {
+                    New-PopupMessage -location $gateway -outagetime $outagetime
+                }
+                $spacer | Add-Content -Path $Logfile
+            }
+
+            if((!(Test-Connection  $isp -Source $adapter -count 1 -ea Ignore)) -and (Test-Connection $gateway -count 1 -ea Ignore))
+            {
+                Get-Date | Add-Content -path $Logfile
+                "$isp Connection Failure" | Add-Content -Path $Logfile
+                $outagetime = Start-ContinousPing -address $isp -adapter $adapter -Delay $Delay
+                "Total Outage time in Seconds: $outageTime" | Add-Content -path $Logfile
+                if ($ispPopup)
+                {
+                    New-PopupMessage -location $isp -outagetime $outagetime
+                }           
+                $spacer | Add-Content -Path $Logfile
+            }
+            Start-Sleep -Seconds $Delay
+        }
+    }
+
+    function Start-ContinousPing
+    {
+        Param
+        (
+            $address,
+            [ipaddress] $adapter,
+            [int]$Delay = 10
+        )
+        $currentTime = Get-Date
+        do
+        {
+            Start-Sleep -Seconds $Delay
+        }
+        While (!(Test-Connection $address -Source $adapter -count 1 -ea Ignore))
+
+        $outageTime = ((Get-Date) - $currentTime).TotalSeconds
+        $outageTime
+    }
+
+    function New-PopupMessage
+    {
+        Param
+        (
+            $location,
+            $outagetime
+        )
+        $Popup = New-Object -ComObject Wscript.Shell
+        $popup.popup("$location Failure - seconds: $outagetime ",0,"$location",0x1)
+    }
+
+    # Set external ping source
+        $srcISP = 'www.xfinity.com'
+
+    # Get-Gateway Nic and address
+        $gtwyNIC = Get-NetIPConfiguration -InterfaceAlias (Get-GatewayAdapter)
+        $IP = $gtwyNIC.ipv4address.ipaddress
+        $dfG = $gtwyNIC.IPv4DefaultGateway.NextHop
+    
+    # Set Logfle Location
+        $Logfile = "c:\temp\connection.log"
+        if (!(test-path $Logfile)) { New-Item -Path $Logfile -ItemType File }
+
+    # Start Monitoring
+        Start-ConnectionMonitoring -isp $srcISP -gateway $dfG -Logfile $Logfile -adapter $IP -ispPopup -gateWayPopup
+        # ii $Logfile
+#endregion
