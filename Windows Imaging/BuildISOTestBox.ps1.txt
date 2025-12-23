@@ -1,0 +1,105 @@
+[System.Reflection.Assembly]::LoadWithPartialName(“System.windows.forms”) | Out-Null
+$ActionChain = ([System.Windows.Forms.MessageBox]::Show("Select an option below:`n`nYES - Create VM`nNO - Delete VM`nCancel - Exit Script" , "SHBS VM Script" , 3, 32))
+Switch ($ActionChain)
+{
+    'Yes'
+    {
+        Function Get-FileName($initialDirectory)
+        {  
+            [System.Reflection.Assembly]::LoadWithPartialName(“System.windows.forms”) |
+            Out-Null
+
+            $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+            $OpenFileDialog.initialDirectory = $initialDirectory
+            $OpenFileDialog.filter = “ISO files (*.ISO)| *.ISO”
+            $OpenFileDialog.ShowDialog() | Out-Null
+            $OpenFileDialog.filename
+        }
+
+        # Initialize variables and other value from existing SHB VM
+            $trgIso = (Get-FileName "C:\SHBS\Media") #"C:\SHBS\Deployment Share\Boot\LiteTouchPE_x64.iso"
+            $oldVM = Get-VM | Where-Object{ $_.Name -match "SHB Server 2019" }
+            $memory = (Get-VMMemory -VMName $oldVM.name).Startup
+            $switch = (Get-VMNetworkAdapter -VMName $oldVM.name).SwitchName
+            $nvName = "ISO-Test"
+
+        # Create the new VM to test Deployment ISO
+            New-VM -Name $nvName -Generation $oldVM.Generation -MemoryStartupBytes $memory `
+                   -SwitchName $switch -NewVHDSizeBytes 40GB -NewVHDPath "$($oldVM.Path)\$nvName\$nvName.vhdx"
+            Set-VMProcessor $nvName -Count 2
+    
+            If (!([String]::IsNullOrEmpty($trgIso)))
+            {
+                If ([bool]((Get-VM $nvName).DVDDrives) -eq $false) { Add-VMDvdDrive -VMName $nvName -Path $trgIso }
+                Else { Set-VMDvdDrive -VMName $nvName -Path $trgIso }
+                Set-VMFirmware $nvName -BootOrder (Get-VMDvdDrive $nvName), (Get-VMHardDiskDrive $nvName)
+                # Set-VMFirmware $nvName -FirstBootDevice (Get-VMDvdDrive $nvName)
+            }
+    }
+    'No'
+    {
+        # Remove ISO-Test VM
+            $answer = ([System.Windows.Forms.MessageBox]::Show("Delete the ISO-TEST VM?" , "Query" , 4, 32))
+            If ($answer -eq 'Yes')
+            {
+                $newVM = Get-VM | Where-Object{ $_.Name -match "ISO-Test" }
+                If ($newVM.State -ne 'Stopped'){ Stop-VM -Name $newVM.Name -TurnOff -Force }
+                Remove-VM -Name  $newVM.Name -Force
+                Remove-Item "$($newVM.Path)\$($newVM.Name)" -Recurse -Force
+            }
+
+            $answer = ([System.Windows.Forms.MessageBox]::Show("Delete the SHBS VM, Folders and Shares?" , "Query" , 4, 32))
+            If ($answer -eq 'Yes')
+            {
+                # Remoce SHBS VM
+                    $trgVM =  Get-VM | Where-Object{ $_.Name -match "SHB Server 2019" }
+                    If ($trgVM.State -ne 'Stopped'){ Stop-VM -Name $trgVM.Name -TurnOff -Force }
+                    Remove-VM -Name  $trgVM.Name -Force
+                    Remove-Item "$($trgVM.Path)" -Recurse -Force
+                    Get-VMSwitch | Where-Object name -match 'shbs' | Remove-VMSwitch -Force
+                # Remore SHBS Shares
+                    Get-FileShare | Where-Object { $_.Name -match 'SHBS' } | Remove-FileShare -Confirm:$false
+                # Remove desktop link
+                    $lnkPath = "C:\Users\Administrator\Desktop\Deployment Workbench.lnk"
+                    If ((Test-path $lnkPath) -eq $true){ Remove-Item $lnkPath -Force }
+                # Remove SHBS Folders
+                    If ((Test-path "C:\SHB") -eq $true){ Remove-Item "C:\SHB" -Recurse -Force }
+                    If ((Test-path "C:\SHBS") -eq $true){ Remove-Item "C:\SHBS" -Recurse -Force }
+                # Remove Programs
+                    $MyApps = Get-WmiObject -Class Win32_Product 
+                    $MyApps.Name
+
+                    $trgApps = @('User State Migration Tool',
+                                 'Windows Deployment Tools',
+                                 'Windows PE x86 x64',
+                                 'Windows PE x86 x64 wims',
+                                 'Windows System Image Manager on amd64',
+                                 'Microsoft Deployment Toolkit')
+                    ForEach ($app in $trgApps)
+                    {
+                        Write-Host -f c "Removing [$app]"
+                        $MyApp = $MyApps | Where-Object{$_.Name -match $app}
+                        $MyApp.Uninstall()
+                    }                          
+                # Get-Package -Provider Programs -IncludeWindowsInstaller -Name ($_ -match "Windows PE")
+            }
+            <#
+                Icons Values:
+                    16 Stop
+                    32 Question
+                    48 Exclamation
+                    64 Information
+                Button Vaules:
+                    0 OK
+                    1 OKCancel
+                    2 AbortRetryIgnore
+                    3 YesNoCancel
+                    4 YesNo
+                    5 RetryCancel
+            #>
+    }
+    'Cancel'
+    {
+        Write-Host -f c "Exiting Script...."; Start-Sleep -sec 2
+    }
+}
