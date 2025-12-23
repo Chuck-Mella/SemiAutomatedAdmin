@@ -1,0 +1,46 @@
+
+#Requires -RunAsAdministrator
+Param
+(
+    $logServer = 'LOGSERVER',
+    $curMonth = "{0:yyyy-MM}" -f (Get-Date),
+    $zipMonth = "{0:yyyy-MM}" -f (Get-Date).AddMonths(-2),
+    [switch]$TS = $true
+)
+
+# Troubleshooting Logs - If Needed
+If ($TS.IsPresent){ Start-Transcript -Path "$logServer\\logServer Event Logs\RuntimeLogs\Clean-EvtBUFolders_TS_$(Get-Date -f yyyy-MM-dd_HHmm).log") }
+
+$curDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()).Name
+
+$netLogFldrs = "\\LOGSVR\Logs"
+$trgFldr = $netLogFldrs +'\'+ 'Server Event Logs'
+
+Switch ($curDomain)
+{
+    {$_ -match '^ol'}{ $sites = @('AD-East','AD-West','Misc')}
+    {$_ -match '^ax'}{ $Sites = $null }
+}
+
+ForEach ($site in $Sites)
+{
+    $trgFldrs = $trgFldr +'\'+ $site
+    $lstFldrs = (gci $trgFldrs -Directory -Exclude 'RuntimeLogs')
+    ForEach ($fldr in $lstFldrs)
+    {
+        $trgLogs = gci ($trgFldrs + '\' + $fldr.Name) -File | where LastwriteTime -lt $curMonth
+        ForEach ($log in $trgLogs)
+        {
+            $trgDest = $log.DirectoryName + '\' + ("{0:yyyy-MM}" -f $log.LastwriteTime)
+            If ((Test-Path $trgDest) -eq $false){ New-Item $trgDest -ItemType Directory }
+            Move-Item -Path $log.Fu11Name -Destination $trgDest -Force
+        }
+    }
+    # Zip Code
+    $trgZips = GCI $fldr.FullName -Directory | Where Name -Match '\d{2}\-\d{2}' | Where Name -le $zipMonth
+    ForEach ($zip IN $trgZips)
+    {
+        Compress-Archive -Path $zip.FullName -DestinationPath $($zip.FullName + '.zip') -Force
+        If ($?){ Remove-Item -Path $zip.FullName -Recurse -Force -Confirm:$false }
+    }
+}

@@ -1,0 +1,655 @@
+Param
+(
+    $srcFolders = "\\<FILESERVER>\Folder Redirection`$\$env:USERNAME",
+    $dstFolders = "\\<FILESERVER>\FolderRedirection`$\$env:USERNAME",
+    [switch]$Troubleshooting = $true
+)
+# start-Transcript -Path "\\FILESVR_C\Folder Redirection\$env:USERNAME\ts.log"
+# Unicode paths (Path Depth Fix)
+# $srcFolders = $srcFolders -replace '\\\\', '\\?\'
+# $dstFolders = $dstFolders -replace"\\\\","\\?\"
+$null = [reflection.assembly]::loadwithpartialname("system.Drawing")
+$null = [reflection.assembly]::loadwithpartialname("system.windows.Forms")
+#region Functions
+    function Copy-ItemWithProgress
+    {
+        <#
+            .SYNOPSIS
+                Robocopy with Powershell progress.
+
+            . DESCRIPTION
+                Performs file copy with Robocopy. output from Robocopy is captured,
+                parsed, and returned as Powershell native status and progress.
+
+            . PARAMETER Source
+                Directory to copy files from, this should not contain trailing slashes
+
+            .PARAMETER Destination
+                Directory to copy files to,this should not contain trailing slahes
+
+            .PARAMETER FilesToCopy
+                A wildcard expresion of which files to copy, defaults to * *
+
+            .PARAMETER RobocopyArgs
+                List of arguments passed directly to Robocopy.
+                Must not conflict with defaults : /ndl /TEE /Bytes /NC /nfl /Log
+
+            . PARAMETER ProgressiD
+                when specified (>=0) will use this identifier for the progress bar
+
+            . PARAMETER ParentProgressiD
+                when specified (>= 0) will use this identifier as the parent ID for
+                progress bars scripts so that they appear nested which allows for
+                usage in more complex.
+
+            .OUTPUTS
+                Returns an object with the status of final copy. 
+
+                REMINDER: Any error level below 8 can be considered a success byRobocopy
+
+            .EXAMPLE
+                C:\PS>.\Copy-ItemwithProgress c:\src d:\Dest
+
+                copy the contents of the c:\Src directory to a directory d:\Dest
+                without the /e or /mir switch, only files from the root of c:\src are
+
+            . EXAMPLE
+                C:\PS>.\Copy-ItemwithProgress '"c:\Src Files'" d:\Dest /mi r /xf *.log
+
+                Copy the contents of the 'c:\Name with Space' directory to a directory
+                /mir and /XF parameters are passed to robocopy, and script is run
+
+            . LINK
+                https://keithga.wordpress.com/2014/06/23/copy-itemwithprogress
+
+            .NOTES
+                By Keith s.Garner (KeithGa@KeithGa.com) - 6/23/2014
+                with inspiration by Trevor sullivan @pcgeek86
+                Tweaked by Justin Marshall - 02/20/2020
+        #>
+        [cmdletBinding()]
+        Param
+        (
+            [ Parameter (Mandatory=$true) ]
+            [string] $source ,
+            [ Parameter (Mandatory=$true)]
+            [string] $Destination ,
+            [ Parameter (Mandatory=$false) ]
+            [string] $FilesToCopy="*.*" ,
+            [ Parameter (Mandatory = $true ,valueFromRemainingArguments=$true) ]
+            [string []] $RobocopyArgs ,
+            [int] $ParentProgressiD=-1,
+            [int] $ProgressiD=-1
+        )
+        #handle spaces and trailing slashes
+            $SourceDir = '"{0}"' -f ($source -replace "\\+$","")
+            $TargetDir = '"{0}"' -f ($Destination -replace "\\+$","")
+            $scanLog = [IO.Path]::GetTempFileName()
+            $RoboLog = [IO.Path]::GetTempFileName()
+            $ScanArgs = @($SourceDir,$TargetDir,$FilesTocopy) + $RobocopyArgs + "/ndl /TEE /bytes /Log: $scanLog /nfl /L".split(" ")
+            $RoboArgs = @($sourceDir,$TargetDir,$FilesTocopy) + $RobocopyArgs + "/ndl /TEE /bytes /Log: $RoboLog /NC".split(" ")
+
+        # Launch Robocopy Processes
+            write-verbose ("Robocopy scan:'n" + ($scanArgs -join " "))
+            write-verbose ("Robocopy Full:'n" + ($RoboArgs -join " "))
+            $scanRun = Start-Process robocopy -PassThru -WindowStyle Hidden -ArgumentList $ScanArgs
+            try
+            {
+                $RoboRun = Start-Process robocopy -PassThru -WindowStyle Hidden -ArgumentList $RoboArgs
+                try
+                {
+                    # Parse Robocopy "scan" pass
+                    $ScanRun.WaitForExit()
+                    $LogData = Get-Content $ScanLog
+                    if ($ScanRun.Exitcode -ge 8)
+                    {
+                        $Logoata | Out-String | Write-Error
+                        throw "Robocopy $($ScanRun.Exitcode) "
+                    }
+                    $Filesize = [regex]::Match($Logoata[-4],".+:\s+(\d+)\s+(\d+)").Groups[2].value
+                    Write-Verbose ("Robocopy Bytes: $Filesize 'n" +($LogData -join "`n"))
+                    #determine progress parameters
+                    $ProgressParms=@{}
+                    if ( $ParentProgressiD -ge 0) { $ProgressParms['ParentiD']=$ParentProgressiD }
+                    if ($ProgressiD -ge 0) { $ProgressParms['ID']=$ProgressiD }
+                    else { $ProgressParms['ID']=$RoboRun.Id }
+                    # Monitor Full Robocopy
+                    while ( !$RoboRun.HasExited)
+                    {
+                        $Logoata = Get-Content $RoboLog
+                        $Files = $Logoata -match "A\s*(\d+)\s+(\5+)"
+                        if ($null -ne $Files )
+                        {
+                            $copied = ($Files[0..($Files.Length *2)] | ForEach-object{
+                                $_.split("'t")[-2]} | Measure-Object -sum).sum
+                                if ($LogData[-1] -match "(100|\d?\d\.\d)\%")
+                                {
+                                    Write-Progress copy -ParentiD $ProgressParms['ID'] -PercentComplete $LogData[-1].Trim("% t" ) $LogData[-1]
+                                    $Copied += $Files[-1].split("`t")[-2] / 100 * ($LogData[-1].Trim("% `t"))
+                                }
+                                else
+                                {
+                                    Write-Progress copy -ParentiD $ProgressParms['ID'] -complete
+                                }
+                                Write-Progress ROBOCOPY -Percentcomplete ($copied/$Filesize*100) $Files[-1].split("`t")[-1] @ProgressParms
+                        }
+                    }
+                }
+                finally
+                {
+                    if (!$RoboRun.HasExited)
+                    {
+                        Write-Warning "Terminating copy process with ID $($RoboRun.Id)... "
+                        $RoboRun.Kill()
+                    }
+                    $RoboRun.WaitForExit()
+                    # Parse full Robocopy pass results, and cleanup
+                    (Get-Content $RoboLog)[-11..-2] | Out-String | Write-Verbose
+                    Remove-Item $RoboLog
+                }
+            }
+            finally
+            {
+                write-output ([Pscustomobject]@{ Exitcode = $RoboRun.Exitcode })
+                if (!$ScanRun.HasExited)
+                {
+                    Write-Warning "Terminating scan process with ID $ ($scanRun.I d)..."
+                    $ScanRun.Kill()
+                } 
+                $ScanRun.waitForExit()
+            }
+            Remove-Item $scanLog
+    }
+
+    Function Copy-FilesBitsTransfer
+    {
+        Param
+        (
+            [Parameter(Mandatory=$true)] [String]$sourcePath,
+            [Parameter(Mandatory=$true) ][String]$destinationPath,
+            [Parameter(Mandatory=$false) ][bool]$createRootDirectory = $true
+        )
+        $item = Get-Item $sourcePath
+        (
+            [Parameter (Mandatory=$true)] [String] $sourcePath ,
+            [Parameter (Mandatory=$true) ][String] $destinationPath ,
+            [Parameter (Mandatory=$false) ][bool ] $createRootDirectory
+        )
+        $item = Get-Item $sourcePath
+        $itemName = Split-Path $sourcePath -Leaf
+        if ( !$item.PSisContainer) #Item Is a file
+        {
+            $clientFileTime = Get-Item $sourcePath | select LastwriteTime -ExpandProperty LastWriteTime
+            if (!(Test-Path -Path $destinationPath\$itemName))
+            {
+                Start-BitsTransfer -source $sourcePath -Destination $destinationPath -Description "$sourcePath >> $destinationPath" -DisplayName "copy Template file" -confirm:$false
+                if (!$?){return $false}
+            }
+            else
+            {
+                $serverFileTime = Get-Item $destinationPath\$itemName | select LastwriteTime -ExpandProperty LastwriteTime
+                
+                if ($serverFileTime -lt $clientFileTime)
+                {
+                    Start-BitsTransfer -source $sourcePath -Destination $destinationPath -Description "$sourcePath >> $destinationPath" -DisplayName "copy Template file" -confirm:$false
+                    if (!$?){ return $false }
+                }
+            }
+        }
+        else #Item Is a directory
+        {
+            if ($createRootoirectory)
+            {
+                $destinationPath = "$destinationPath\$itemName"
+                if (!(Test-Path -Path $destinationPath -PathType Container))
+                {
+                    if (Test-Path -Path $destinationPath -PathType Leaf){ Remove-Item -Path $destinationPath } #In case item is a file, delete it.
+                    $null = New-Item -ItemType Directory $destinationPath
+                    if (!$?){ return $false }
+                }
+            }
+            Foreach ($fileorDirectory in (Get-Item -Path "$sourcePath\*"))
+            {
+                $status = Copy-FilesBitsTransfer $fileorDirectory $destinationPath $true
+                if (!$status){ return $false }
+            }
+        }
+        return $true
+    }
+
+#endregion
+#region GUI
+    Function Dec64($a){ $b = [Text.Encoding]::ASCII.GetString([System.convert]::FromBase64String($a)); Return $b }
+    Function Form1
+    {
+        #region - Form Objects
+            $usrMain = New-Object System.Windows.Forms.Form
+                $usrMain.FormBorderstyle = 'Fixedsingle'
+                $usrMain.showinTaskbar = $False
+                $usrMain.controlBox = $False
+            $cbx_IAgree = New-Object System.Windows.Forms.CheckBox
+            $btn_continue = New-Object System.Windows.Forms.Button
+            $lbl_Title = New-Object System.Windows.Forms.Label
+            $lbl_cbxExplain = New-Object System.Windows.Forms.Label
+            $rtxt_Explain = New-Object System.Windows.Forms.RichTextBox
+            $Initia1Formwindowstate = New-Object System.Windows.Forms.FormWindowState
+        #endregion
+        #region - Event script Blocks
+            $btn_continue_onclick = { If ($cbx_IAgree.checked -eq $true){ $usrMain.Close() } }
+            $handler_lbl_Title_click = { <#TODO: Place custom script here#> }
+            $handler_Admin_Load = { <#TODO: Place custom script here#> }
+            $OnLoadForm_statecorrection = {
+                #correct the initial state of the form to prevent the.Net maximized form issue
+                $usrMain.windowstate = $InitialFormwindowstate
+                }
+            $handler_rtxt_Explain_Textchanged = { <#TODO: Place custom script here#> }
+        #endregion
+        #region - Form code
+            #region Kill Alt + F4
+                $usrMain_Keyoown = [system.windows.Forms.KeyEventHandler]{
+                    #Event Argument: $_ = [system.windows.Forms.KeyEventArgs]
+
+                    if ($_.Alt -eq $true -and $_.Keycode -eq 'F4' ) { $script:altF4Pressed = $true }
+                    }
+                $usrMain_Formclosing = [System.windows.Forms.FormclosingEventHandler]{
+                    #Event Argument: $_ = [system.windows.Forms.FormclosingEventArgs]
+
+                        if ($script:altF4Pressed)
+                        {
+                            if ($_.closeReason -eq 'userclosing' )
+                            {
+                                $_.cancel = $true
+                                $script:altF4Pressed = $false ;
+                            }
+                        }
+                    }
+                $usrMain.KeyPreview = $True
+                $usrMain.add_Formclosing($usrMain_Formclosing)
+                $usrMain.add_Keyoown($usrMain_Keyoown)
+            #endregion
+            #region Main Form
+                $usrMain.Backcolor = [System.Drawing.color]::FromArgb(255,116,236,242)
+                $system_Drawing_size = New-Object System.Drawing.Size
+                $System_Drawing_size.Height = 900 # 363
+                $system_Drawing_size.width = 1175 # 437
+                $usrMain.clientsize = $System_Drawing_size
+                $usrMain.DataBindings.DefaultDataSourceUpdateMode = 0
+                $usrMain.MaximizeBox = $False
+                $usrMain.MinimizeBox = $False
+                $usrMain.Name = "usrMain"
+                $usrMain.Text = "User Data Migration Tool"
+                $usrMain.add_Load( $handler_Admin_Load)
+            #endregion
+            #region Labels
+                $lbl_Title.DataBindings.DefaultDataSourceUpdateMode = 0
+                $lbl_Title.Font = New-Object System.Drawing.Font("Microsoft sans serif",11.25,3,3,1)
+                $system_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 449
+                $System_Drawing_Point.Y = 20
+                $lbl_Title.Location = $System_Drawing_Point
+                $lbl_Title.Name = "lbl_Title"
+                $System_Drawing_size = New-Object System.Drawing.Size
+                $system_Drawing_size.Height = 31
+                $system_Drawing_size.width = 203
+                $lbl_Title.size = $System_Drawing_Size
+                $lbl_Title.Tabindex = 4
+                $lbl_Title.Text = "Explanation"
+                $lbl_Title.add_click($handler_lbl_Title_click)
+                $usrMain.controls.Add($lbl_Title)
+
+                $lbl_cbxExplain.DataBindings.DefaultDataSourceUpdateMode = 0
+                $lbl_cbxExplain.Font = New-Object System.Drawing.Font( "Microsoft sans serif",10,0,3,1)
+                $system_Drawing_Point = New-Object System.Drawing.Point
+                $system_Drawing_Point.x = 770
+                $system_Drawing_Point.Y = 780
+                $lbl_cbxExplain.Location = $System_Drawing_Point
+                $lbl_cbxExplain.Name = "lbl_cbxExplain"
+                $system_Drawing_size = New-Object System.Drawing.Size
+                $System_Drawing_size.Height = 30
+                $system_Drawing_size.width = 204
+                $lbl_cbxExplain.size = $System_Drawing_size
+                $lbl_cbxExplain.Tabindex = 3
+                $lbl_cbxExplain.Text = "Check 'I Agree' to continue... "
+                $usrMain.controls.Add($lbl_cbxExplain)
+            #endregion
+            #region checkbox
+                $cbx_IAgree.DataBindings.DefaultDataSourceUpdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $system_Drawing_Point.X = 1000
+                $System_Drawing_Point.Y = 780
+                $cbx_IAgree.Location = $System_Drawing_Point
+                $cbx_IAgree.Name = "cbx_IAgree"
+                $System_Drawing_size = New-Object System.Drawing.Size
+                $System_Drawing_size.Height = 24
+                $System_Drawing_size.width = 124
+                $cbx_IAgree.Autosize = $False
+                $cbx_IAgree.size = $System_Drawing_Size
+                $cbx_IAgree.Tabindex = 0
+                $cbx_IAgree.Text = "I Agree"
+                $cbx_IAgree.UseVisualStyleBackColor = $True
+                $cbx_IAgree.Font = New-Object System.Drawing.Font ("Microsoft sans serif",10,0,3,1)
+                $usrMain.controls.Add($cbx_IAgree)
+            #endregion
+            #region RichTextBox
+                $rtxt_Explain.DataBindings.DefaultDataSourceUpdateMode = 0
+                $system_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 42
+                $system_Drawing_Point.Y = 57
+                $rtxt_Explain.Location = $System_Drawing_Point
+                $rtxt_Explain.Name = "rtxt_Explain"
+                $system_Drawing_size = New-Object System.Drawing.Size
+                $system_Drawing_size.Height = 700 # 224
+                $system_Drawing_size.width = 1070 # 354
+                $rtxt_Explain.size = $system_Drawing_size
+                $rtxt_Explain.Tabrndex = 2
+                ### FIX ### FIX ### FIX ### $rtxt_Explain.Text = (Dec64 'VXNlciBQcm9maWxliERhdGEgaXMgY3VycmVudGx5IGluiHRoZSBwcm9jZXNziG9miGJlaW5niG1pZ3JhdGVkiHRVIHROZSBUZXcgzmlsZSBZZXJ2ZXJZLg0KDQpZb3UgYXJliHJlY2VpdmluZyB0aGlziG1lc3NhZ2UgYmVjYXVzZSB5b3VyiGFjY291bnQgaGFZIGJlZW4gbW92ZWQgdG8gdGhliG5ldyBhcmNoaXRlY3R1cmUuDQONC1RoaXMgcHJvZ3JhbSB3aWxsiGNVCHkgKG5vdCBtb3ZlKSB5b3VyiHByb2ZpbGUgZGF0YSAORGVza3RvcCwgRG9jdW1lbnRZLCBldGMULikgdG8gdGhliG5ldyBmaWxliHNlcnzlci4NCg0KT25jZSBsb2dnZWQgaW4geW91IHdpbGwgc3RpbGwgYmUgYWJSZSB0byBhY2NlcyB5b3VyiG9yaWdpbmFsiGRhdGEgdmlhiGZpbGUgZXhwbG9yZXIgKFUgRHJpdmUpDQpUaGlziHNoYXJliHdpbGwgYmUgcmVtb3ZlZCBvbmNliHRoZSBlbnRpcmUgbWlncmF0aW9uiGVmZm9ydCBoYXMgYmVlbiBjb21wbGV0ZWQgZm9yiHROZSBvcmdhbml6YXRpb24uDQONCg0KVG8gZW5zdXJliHROZXJliGlziG5viGRhdGEgbG9zcywgcGxlYXNliGRVIG5vdCBsb2dvdXQgb3IgbG9jayB5b3VyiHN5c3RlbSB1bnRpbCB0aGlziHByb2dyYW0gaGFZIGNvbXBSZXRlZC4NCkEgc3VtbWFyeSBwb3B1cCB3aWxsiGFWCGVhcnMgb25jZSB0aGUgb3BlcmF0aW9UIGlziGNvbXBsZXR1Lg0KDQONCg0KDQpDbGljayB0aGUgJ0kgQWdyZWUniGNoZWNrYm94IGFUZCBjbGljayBvbiAnQ29udGludWUniHRVIGJlZ2luLg==')
+                $rtxt_Explain.Font = [System.Drawing.Font]'Times New Roman,20pt,style=Bold,Italic'
+                $rtxt_Explain.add_Textchanged($handler_rtxt_Explain_Textchanged)
+                $usrMain.controls.Add($rtxt_Explain)
+            #endregion
+            #region Button
+                $btn_continue.DataBindings.DefaultDataSourceUpdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $system_Drawing_Point.x = 970
+                $System_Drawing_Point.Y = 820
+                $btn_continue.Location = $System_Drawing_Point
+                $btn_continue.Name = "btn_continue"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $system_Drawing_size.Height = 37
+                $System_Drawing_Size.width = 105
+                $btn_continue.size = $system_Drawing_size
+                $btn_continue.Tabindex = 1
+                $btn_continue.Text = "continue"
+                $btn_continue.UseVisualStyleBackColor = $True
+                $btn_continue.add_click( $btn_continue_onclick)
+                $usrMain.Controls.Add( $btn_continue)
+            #endregion
+        #endregion
+
+        #save the initial state of the form
+            $Initia1Formwindowstate = $usrMain.windowstate
+        #Init the OnLoad event to correct the initial state of the form
+            $usrMain.add_Load($OnLoadForm_statecorrection)
+        #Show the Form
+            $null = $usrMain.showDialog()
+    }
+    Function Form2
+    {
+        #region - Form Objects
+            $usrProg = New-object System.windows.Forms.Form
+            $progressBar2 = New-object system.windows.Forms.ProgressBar
+            $label? = New-object System.windows.Forms.Label
+            $Initia1Formwindowstate = New-object system.windows.Forms.Formwindowstate
+        #endregion
+        #region - Event script Blocks
+            $onLoadForm_statecorrection =
+            {
+                #Correct the initial state of the form to prevent the.Net maximized form issue
+                $usrProg.windowstate = $rnitialFormwindowstate
+            }
+        #endregion
+        #region - Form code
+            #region Kill Alt + F4
+                $UsrProg_Keyoown=[System.windows.Forms.KeyEventHandler]{
+                    #Event Argument: $_ = [System.windows.Forms.KeyEventArgs]
+
+                        if ($_.Alt -eq $true -and $_.Keycode -eq 'F4' )
+                        { $script:altF4Pressed = $true }
+                    }
+                $UsrProg_Formclosing=[ System.windows.Forms.FormclosingEventHandler]{
+                    #Event Argument: $_ = [system.windows.Forms.FormclosingEventArgs]
+
+                    if ($script:altF4Pressed)
+                    {
+                        if ($_.closeReason -eq 'userclosing')
+                        {
+                            $_.cancel = $true
+                            $script:altF4Pressed = $false
+                        }
+                    }
+                    }
+                $usrProg.KeyPreview = $True
+                $UsrProg.add_Formclosing($usrProg_Formclosing)
+                $usrProg.add_KeyDown($UsrProg_Keyoown)
+            #endregion
+            #region Main Form
+                $usrProg.Backcolor = [System.Drawing.Color]::FromArgb(255,240,240,240)
+                $System_Drawing_size = New-Object System.Drawing.Size
+                $UsrProg.Locat1on.x = 253
+                $usrProg.Location.Y = 313
+                $system_Drawing_size.Height = 200
+                $system_Drawing_size.width = 913
+                $UsrProg.Clientsize = $System_Drawing_size
+                $usrProg.DataBindings.DefaultDataSourceUpdateMode = 0
+                $UsrProg.MaximizeBox = $False
+                $usrProg.Minimizesox = $False
+                $UsrProg.Name = "UsrProg"
+                $UsrProg.Text = "Data Transfer Progress"
+                $UsrProg.add_Load($handler_Admin_Load)
+            #endregion
+            #region Progress Bar
+                $progressBar2.DataBindings.oefaultDatasourceupdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $system_Drawing_Point.x = 43
+                $System_Drawing_Point.Y = 73
+                $progressBar2.Location = $System_Drawing_Point
+                $progresssar2.Name = "progressBar2"
+                $System_Drawing_size = New-Object System.Drawing.Size
+                $System_Drawing_size.Height = 65
+                $system_Drawing_size.width = ($UsrProg.width - ($progresssar2.Location.x -  2.5))
+                $progresssar2.size = $System_Drawing_size
+                $progressBar2.Tabrndex = 0
+                $progressBar2.value = 62
+                $UsrProg.controls.Add($progresssar2)
+            #endregion
+            #region Label
+                $label7.DataBindings.DefaultDataSourceUpdateMode = 0
+                $label7.Font = New-Object System.Drawing.Font ("Microsoft sans serif",11.25,3,3,1)
+                $system_Drawing_Point = New-Object System.Drawing.Point
+
+                $System_Drawing_Point.x = 44
+                $system_Drawing_Point.Y = 21
+                $label7.Location = $system_Drawing_Point
+                $label7.Name = "label7"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_size.Height = 31
+                $System_Drawing_Size.width = 203
+                $label7.size = $system_Drawing_size
+                $label7.Tabrndex = 11
+                $label7.Text = "current Progress"
+                $label7.add_click($handler_label7_click)
+                $UsrProg.controls.Add($label7)
+            #endregion
+        #endregion
+
+        #Save the initial state of the form
+            $InitialFormwindowstate = $usrProg.windowstate
+        #Init the onLoad event to correct the initial state of the form
+            $UsrProg.add_Load($OnLoadForm_StateCorrection)
+        #show the Form
+            $null = $UsrProg.showoialog()
+    }
+    Function Form3
+    {
+        Param
+        (
+            $frmcolor,
+            $frmText
+        )
+        #region - Form Objects
+            $UsrDone = New-Object System.Windows.Forms.Form
+            $btn_close = New-Object System.Windows.Forms.Button
+            $rtxt_Summary = New-Object System.Windows.Forms.RichTextBox
+            $lbl_Title = New-Object System.Windows.Forms.Label
+            $InitialFormwindowstate = New-Object System.Windows.Forms.Formwindowstate
+        #endregion
+        #region - Event script Blocks
+            $btn_close_onclick = { $usrDone.close() }
+            $OnLoadForm_Statecorrection = {
+                #Correct the initial state of the form to prevent the.Net maximized form issue
+                $usrDone.windowState = $InitialFormwindowState
+                }
+        #endregion
+        #region - Form code
+            #region Kill Alt + F4
+                $UsrDone_KeyDown=[System.windows.Forms.KeyEventHandler]{
+                    #Event Argument: $_ = [System.windows.Forms.KeyEventArgs]
+
+                        if ($_.Alt -eq $true -and $_.Keycode -eq 'F4' )
+                        { $script:altF4Pressed = $true }
+                    }
+                $UsrDone_Formclosing=[ System.windows.Forms.FormclosingEventHandler]{
+                    #Event Argument: $_ = [system.windows.Forms.FormclosingEventArgs]
+
+                    if ($script:altF4Pressed)
+                    {
+                        if ($_.closeReason -eq 'userclosing')
+                        {
+                            $_.cancel = $true
+                            $script:altF4Pressed = $false
+                        }
+                    }
+                    }
+                $UsrDone.KeyPreview = $True
+                $UsrDone.add_Formclosing($UsrDone_Formclosing)
+                $UsrDone.add_KeyDown($UsrDone_Keyoown)
+            #endregion
+            #region Main Form
+                $usrDone.Backcolor = $frmcolor
+                # $usrDone.Backcolor = [System.Drawing.Color]::FromArgb(255,124,236,137)
+                $system_Drawing_size = New-Object System.Drawing.Size
+                $UsrDone.Locat1on.x = 266
+                $usrDone.Location.Y = 298
+                $system_Drawing_size.Height = 650
+                $System_Drawing_Size.Width = 1109
+                $usrDone.ClientSize = $system_Drawing_size
+                $UsrDone.DataBindings.DefaultDataSourceUpdateMode = 0
+                $usrDone.MaximizeBox = $False
+                $UsrDone.MinimizeBox = $False
+                $UsrDone.Name = "usrDone"
+                $usrDone.Text = "Job summary"
+                $usrDone.add_Load($handler_Admin_Load)
+            #endregion
+            #region Labels
+                $lbl_Title.DataBindings.DefaultDataSourceUpdateMode = 0
+                $lbl_Title.Font = New-Object System.Drawing.Font ("Microsoft sans serif",11.25,3,3,1)
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.x = 449
+                $System_Drawing_Point.Y = 20
+                $lbl_Title.Location = $System_Drawing_Point
+                $lbl_Title.Name = "lbl_Title"
+                $system_Drawing_size = New-Object System.Drawing.Size
+                $system_Drawing_size.Height = 31
+                $system_Drawing_Size.width = 203
+                $lbl_Title.size = $System_Drawing_size
+                $lbl_Title.Tabrndex = 4
+                $lbl_Title.Text = "summary"
+                $lbl_Title.add_click($handler_lbl_Title_click)
+                $usrDone.Controls.Add($lbl_Title)
+            #endregion
+            #region RichTextBox
+                $rtxt_summary.DataBindings.DefaultDataSourceUpdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $system_Drawing_Point.X = 42
+                $System_Drawing_Point.Y = 57
+                $rtxt_summary.Location = $System_Drawing_Point
+                $rtxt_summary.Name = "rtxt_summary"
+                $System_Drawing_size = New-Object System.Drawing.Size
+                $System_Drawing_size.Height = 500 # 224
+                $System_Drawing_Size.Width = ($usrDone.Width - ($rtxt_summary.Location.x * 2.5))
+                $rtxt_summary.Size = $system_Drawing_size
+                $rtxt_summary.Tabrndex = 2
+                $rtxt_summary.Text = $frmText
+                ### FIX ### FIX ### FIX ### #$rtxt_summary.Text = (Dec64 'VGhhbmsgeW91IGZvciB5b3VyiHBhdGllbmNliGR1cmluZyB0aGlziG1pZ3JhdGlvbi4NCg0KWW91ciBkYXRhiG1pZ3JhdGlvbiBoYXMgY29tcGxldGVkiGF0IHROaXMgdGltZS4gWW91ciBvcmlnaW5hbCBkYXRhiHdpbGwgc3RpbGwgYmUgYWNjZXNzaWJsZSB2aWEgZmlsZSBleHBsb3JlciAoVSBEcml2ZSkgYnV0IHdpbGwgYmUgUkVBRC1PTkxZLg0KDQpBIHJlbWluZGVyiHROYXQgdGhliFUgRHJpdmugc2hhcmugd2lsbCBiZSByZW1vdmVkiG9uY2UgdGhliGVudGlyZSBtaWdyYXRpb24gZWZmb3J0IGhhcyBiZWVUIGNvbXBSZXRlZCBmb3IgdGhliG9yZ2FuaXphdGlvbi4NCg0KDQpQbGVhc2UgY29udGFjdCB0aGUgSGVscGRlc2sgYXQgNZAZLTQyOC05MDM5IGlmiHlvdSBoYXZliGFueSBxdWVzdGlvbnMgb3IgY29uY2VybnMNCg0KDQONCkNsaWNriHROZSAnQ2xvc2UniGJ1dHRvbiB0byBjbG9zZSB0aGlziGRpYWXVZ3VlLg==')
+                $rtxt_summary.Font = [system.drawing.font] 'Times New Roman,20pt,style=Bold,Italic'
+                $rtxt_summary.add_Textchanged($handler_rtxt_Summary_Textchanged)
+                $usrDone.Controls.Add($rtxt_summary)
+            #endregion
+            #region Button
+                $btn_close.DataBindings.DefaultDataSourceUpdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.x = 970
+                $System_Drawing_Point.Y = 575
+                $btn_close.Location = $System_Drawing_Point
+                $btn_close.Name = "btn_close"
+                $system_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_size.Height = 37
+                $system_Drawing_size.Width = 105
+                $btn_close.size = $system_Drawing_size
+                $btn_close.Tabindex = 0
+                $btn_close.Text = "close"
+                $btn_close.UseVisualStyleBackColor = $True
+                $btn_close.add_click($btn_close_onclick)
+                $usrDone.Controls.Add($btn_close)
+            #endregion
+        #endregion
+
+        #Save the initial state of the form
+            $InitialFormwindowstate = $UsrDone.windowstate
+        #Init the OnLoad event to correct the initial state of the form
+            $usrDone.add_Load($OnLoadForm_Statecorrection)
+        #Show the Form
+            $null = $usrDone.showDialog()
+    }
+#endregion
+#region Data Transfer
+    $logFile = "$dstFolders\xferResult.log"
+    ### FIX ### FIX ### FIX ### $msgPass = (Dec64 'VGhhbmsgeW91IGZvciB5b3VyiHBhdGllbmNliGRlcmluZyB0aGlziGlpZ3JhdGlvbi4NCg0KWW9lciBkYXRhiGlpZ3JhdGlvbiBoYXMgY29tcGxldGVkiGF0IHRoaXMgdGltZS4gWW9lciBvcmlnaW5hbCBkYXRhiHdpbGwgc3RpbGwgYmUgYWNjZXNzaWJsZSB2aWEgZmlsZSBleHBsb3JlciAoVSBEcml2ZSkgYnV0IHdpbGwgYmUgUkVBRC1PTkxZLg0KDQpBIHJlbWluZGVyiHRoYXQgdGhliFUgRHJpdmUgc2hhcmUgd2lsbCBiZSByZWlvdmVkiG9uY2UgdGhliGVudGlyZSBtaWdyYXRpb24gZWZmb3J0IGhhcyBiZWVuiGNvbXBsZXRlZCBmb3IgdGhliG9yZ2FuaXphdGlvbi4NCg0KDQpQbGVhc2UgY29udGFjdCB0aGUgSGVSCGRlc2sgYXQgNZAZLTQyOC05MDM5IGlmiHlvdSBOYXZliGFueSBxdWVzdGlvbnMgb3IgY29uY2VybnMNCg0KDQoNCkNsaWNriHRoZSAnQ2xvc2UniGJldHRvbiB0byBjbG9zZSB0aGlziGRpYWxvZ3VlLg==')
+    ### FIX ### FIX ### FIX ### $msgFail = (Dec64 'VGhhbmsgeW91IGZvciB5b3VyiHBhdGllbmNliGRlcmluZyB0aGlziGlpZ3JhdGlvbi4NCg0KWW91ciBkYXRhiGlpZ3JhdGlvbiB3YXMgdW5hYmxliHRVIGNvbXBsZXRliGF0IHRoaxMgdGltZS4gDQoNCg0KUGxlYXNliGNvbnRhY3QgdGhliEhlbHBkZXNriGF0IDcwMy00MjgtOTAzOSB0byBhc3Npc3QgeW91IHdpdGggY29tcGxldGluZyB5b3VyiGRhdGEgbWlncmF0aW9uLg0KDQoNCg0KQ2xpY2sgdGhliCdDbG9zZScgYnV0dG9uiHRviGNsb3NliHRoaXMgZGlhbG9ndwuu')
+    #region - Test for previous execution or Profile load Failure
+        # Exit script if successful log file exists otherwise continue
+            If ((Test-Path $logFile -PathType Leaf) -eq $true -AND ((GC $logfile) -cmatch 'SUCCESSFUL' )){ EXIT }
+        # Exit script if DESKTOP is local
+            If ( [System.Environment]::GetFolderPath('Desktop') -notmatch 'vanfs0(2|4)'){ EXIT }
+        # Exit script if DESKTOP is on FS02
+            IF ([System.Environment]::GetFolderPath('Desktop') -match 'vanfs02'){ EXIT }
+    #endregion
+    # Launch initial GUI
+        Form1
+
+    # Execute Data Transfer
+        #region - xfer Data & capture results
+            # Form2
+            If ($Troubleshooting.IsPresent -eq $true)
+            {
+                $rslt = (Copy-FilesBitsTransfer -sourcePath $srcFolders -destinationPath $dstFolders -createRootDirectory $false)
+            }
+            Else
+            {
+                $rslt = (Copy-ItemwithProgress $srcFolders $dstFolders -RobocopyArgs "/mir").Exitcode #/xf
+            }
+        #endregion
+        #region - Analyze & log results
+            $null | sc $logFile
+            "Transfer script runtime: $(Get-Date -f 'yyyy-MM-dd - HH:mm:ss') `n" | Out-File $logFile -Append ascii
+
+            $srcDir = (gci -r $srcFolders)
+            $dstDir = (gci -r $dstFolders) | where {$_.Name -NotMatch 'xferResult' }
+            $test = compare-object $srcDir $dstDir -IncludeEqual
+            # $failList = ($test | where sideindicator -ne'==')
+            $failList = ($test | where sideindicator -eq '<=' )
+
+            # success or Fail
+            If ($failList.count -eq 0)
+            {
+                "`nUser Data Transfer SUCCESSFUL`n$( '-' *50) `n`n" | Out-File $logFile -Append ascii
+                "`nFiles Transferred`n$('-'*50) `n`n" | Out-File $logFile -Append ascii
+                (gci -r $dstFolders) | Out-File $logFile -Append ascii
+    
+                # Launch summary GUI
+                Form3 -frmcolor ( [System.Drawing.Color]::FromArgb(255,62,210,118)) -frmText $msgPass
+            }
+            Else
+            {
+                "`nUser Data Transfer FAILED.`n$('-'*50) `n" | Out-File $logFile -Append ascii
+                "`nFiles - Failed Transfer`n $('-'*50)" | Out-File $logFile -Append ascii
+                # "`nsource <= Destination =>" | out-File $logFile -Append ascii
+                $failList.Inputobject.FullName | Out-File $logFile -Append ascii
+
+                # Launch summary GUI
+                Form3 -frmcolor ([System.Drawing.color]::FromArgb(255,232,145,110)) -frmText $msgFail
+            }
+            # ii $logFile
+        #endregion
+#endregion
+# Stop-Transcript
