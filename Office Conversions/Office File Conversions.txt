@@ -1,0 +1,368 @@
+    #region - Office File Conversions
+        <#
+            # https://stackoverflow.com/questions/53345022/stopping-powershell-command-after-certain-amount-of-time
+            # You can add timer/event in your command. Below is the example of self-terminating script
+            $trgProc = (Get-Process Notepad).id
+            $timer = New-Object timers.timer
+            $timer.Interval = 10000 # milliseconds
+            Register-ObjectEvent -InputObject $timer -EventName Elapsed -SourceIdentifier Timer.Output -MaxTriggerCount 1 -Action {Write-Host "Timeout!"; Stop-Process $trgProc; Remove-Event -EventIdentifier Timer.Output}
+            $timer.Enabled = $true
+
+            # do something
+
+            while ($true) {
+
+                sleep 1
+                Write-Host (get-date)
+
+            }
+
+        #>
+        <#
+            #requires -Version 2
+
+            $maximumRuntimeSeconds = 3
+
+            $process = Start-Process -FilePath powershell.exe -ArgumentList '-Command Start-Sleep -Seconds 4' -PassThru
+
+            try
+            {
+                $process | Wait-Process -Timeout $maximumRuntimeSeconds -ErrorAction Stop
+                Write-Warning -Message 'Process successfully completed within timeout.'
+            }
+            catch
+            {
+                Write-Warning -Message 'Process exceeded timeout, will be killed now.'
+                $process | Stop-Process -Force
+            }
+        #>
+        Convert-OfficeFiles -topLevelPath 'P:\gf' -exts 'Doc','Xls','Ppt','Vsd'
+        Function Convert-OfficeFiles 
+        {
+            Param
+            (
+                # Where to Start Converions
+                $topLevelPath,
+                [array]$exts
+            )
+
+            #region Functions for Office Doc Conversions
+                Function Convert-PPT
+                {
+                    [CmdletBinding()]
+                    Param
+                    (
+                        [Parameter()] $pptFile
+                    )
+                    $PowerPoint = New-Object -ComObject PowerPoint.Application
+                    $PowerPoint.DisplayAlerts = 1
+                    $pptFixedFormat = [Microsoft.Office.Interop.PowerPoint.PpSaveAsFileType]::ppSaveAsOpenXMLPresentation
+                    $path = $pptFile.DirectoryName + '\' + $pptFile.BaseName + '.pptx'
+
+                    Try
+                    {
+                        $Presentation = $PowerPoint.Presentations.Open($pptFile.FullName, `
+                        [Microsoft.Office.Core.MsoTriState]::msoTrue, `
+                        [Microsoft.Office.Core.MsoTriState]::msoFalse, `
+                        [Microsoft.Office.Core.MsoTriState]::msoFalse)
+                        $Presentation.SaveAs($path, $pptFixedFormat)
+                        $Presentation.Close()
+                        Add-Content -Path $topLevelPath'\Converted_Files.txt' -Value $pptFile.FullName
+                    }
+                    Catch
+                    {
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value $pptFile.FullName
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value ($Error[0].Exception | Select *)
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value "`n"
+                    }
+                    $Powerpoint.Quit()
+                    $PowerPoint = $Null
+                    [gc]::Collect()
+                    [gc]::WaitForPendingFinalizers()
+                }
+
+                Function Convert-VSD
+                {
+                    [CmdletBinding()]
+                    Param
+                    (
+                        [Parameter()] $vsdFile
+                    )
+                    $Visio = New-Object -ComObject Visio.Application # | Wait-Process -Timeout $maximumRuntimeSeconds -ErrorAction Stop
+                    $Visio.Visible = 0
+                    $Visio.AlertResponse = 1
+                    $path = $vsdFile.DirectoryName + '\' + $vsdFile.BaseName + '.vsdx'
+
+                    Try
+                    {
+                        $VisioDiagram = $Visio.Documents.Open($vsdFile.FullName)
+                        $VisioDiagram.SaveAs($path)
+                        $VisioDiagram.Close()
+                        Add-Content -Path $topLevelPath'\Converted_Files.txt' -Value $vsdFile.FullName
+                    }
+                    Catch
+                    {
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value $vsdFile.FullName
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value ($Error[0].Exception | Select *)
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value "`n"
+                    }
+                    $Visio.Quit()
+                    $Visio = $Null
+                    [gc]::Collect()
+                    [gc]::WaitForPendingFinalizers()
+                }
+
+                Function Convert-DOC
+                {
+                    [CmdletBinding()]
+                    Param
+                    (
+                        [Parameter()] $docFile
+                    )
+                    $Word = New-Object -ComObject Word.Application
+                    $Word.Visible = 0
+                    $Word.DisplayAlerts = 0
+                    $path = $docFile.DirectoryName + '\' + $docFile.BaseName + '.docx'
+
+                    Try
+                    {
+                        $Document = $Word.Documents.Open($docFile.FullName)
+                        $Document.SaveAs([ref] $path, [ref] $SaveFormat::wdFormatDocumentDefault)
+                        $Document.Close()
+                        Add-Content -Path $topLevelPath'\Converted_Files.txt' -Value $docFile.FullName
+                    }
+                    Catch
+                    {
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value $docFile.FullName
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value ($Error[0].Exception | Select *)
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value "`n"
+                    }
+                    $Word.Quit()
+                    $Word = $Null
+                    [gc]::Collect()
+                    [gc]::WaitForPendingFinalizers()
+                }
+
+                Function Convert-XLS
+                {
+                    [CmdletBinding()]
+                    Param
+                    (
+                        [Parameter()] $xlsFile
+                    )
+                    $Excel = New-Object -ComObject Excel.Application
+                    $Excel.Visible = 0
+                    $Excel.DisplayAlerts = 0
+                    $xlFixedFormat = [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook
+                    $path = $xlsFile.DirectoryName + '\' + $xlsFile.BaseName + '.xlsx'
+
+                    Try
+                    {
+                        $WorkBook = $Excel.Documents.Open($xlsFile.FullName, 0, $true)
+                        $WorkBook.SaveAs($path, $xlFixedFormat)
+                        $WorkBook.Close()
+                        Add-Content -Path $topLevelPath'\Converted_Files.txt' -Value $xlsFile.FullName
+                    }
+                    Catch
+                    {
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value $xlsFile.FullName
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value ($Error[0].Exception | Select *)
+                        Add-Content -Path $topLevelPath'\Error_Report.txt' -Value "`n"
+                    }
+                    $Excel.Quit()
+                    $Excel = $Null
+                    [gc]::Collect()
+                    [gc]::WaitForPendingFinalizers()
+                }
+            #endregion
+            # Initialize parameters for GCI command
+                $params = @{
+                    Path = $topLevelPath
+                    File = $true
+                    Recurse = $true
+                    Include = $( IF ($exts -ne $null){ ($exts | %{ "*.$_"}) -Join (', ') } Else { '*.*' })
+                    EA = 'SilentlyContinue'
+                    }
+
+            # Instantiate the report files
+                "These files could NOT be converted:" | Out-File -FilePath $topLevelPath'\Error_Report.txt'
+                "Converted Files:" | Out-File -FilePath $topLevelPath'\Converted_Files.txt'
+
+            # Get the Files
+                $Files = Get-ChildItem @params
+                $countdown = $files.count
+
+            # Convert the files
+                ForEach ($file in $files)
+                {
+                    $countdown = $countdown - 1
+    
+                    $file = (gc $file)
+                    $input = $file.DirectoryName + '\' + $file.Name
+
+                    Switch ($file.Extension)
+                    {
+                    ".doc"
+                        {
+                            Write-Host "Attempting conversion: "$file.FullName
+                            Convert-DOC($file)
+                            Break
+                        }
+                    ".xls"
+                        {
+                            Write-Host "Attempting conversion: "$file.FullName
+                            Convert-XLS($file)
+                            Break
+                        }
+                    ".ppt"
+                        {
+                            Write-Host "Attempting conversion: "$file.FullName
+                            Convert-PPT($file)
+                            Break
+                        }
+                    ".vsd"
+                        {
+                            Write-Host "Attempting conversion: "$file.FullName
+                            Convert-VSD($file)
+                            Break
+                        }
+                    }
+                    Write-Host -f Cyan "Files Remaining ($($files.count)): $countdown"    
+                }
+        }
+        #region - Delete Old Files
+            $FilesToDelete = Get-Content -Path 'c:\TEMP\Converted_Files.txt'
+            foreach ($filepath in $FilesToDelete)
+            {
+                $filepath = $filepath -replace '\[',"`[" -replace '\]','`]'
+                if (Test-Path $filepath -PathType Leaf)
+                {
+                    Remove-Item -Force "$filepath"
+                }
+            }
+        #endregion
+        Function Convert-OldOffice 
+        {
+            [CmdletBinding()]
+            Param ( [Parameter()]$officeFile )
+
+            $rslt = @{} | Select File,Result,ErrMsg
+            Switch ($officeFile.Extension)
+            {
+              '.doc'
+              {
+                $Word = New-Object -ComObject Word.Application
+                $Word.Visible = 0
+                $Word.DisplayAlerts = 0
+                $wdFixedFormat = [Microsoft.Office.Interop.Word.wdSaveFormat]::wdFormatDocumentDefault
+                $path = $docFile.DirectoryName + '\' + $docFile.BaseName + '.docx'
+
+                Try
+                {
+                  $Document = $Word.Documents.Open($docFile.FullName)
+                  $Document.SaveAs([ref]$path, [ref]$wdFixedFormat)
+                  $Document.Close()
+                  $rslt.File = $docFile.FullName
+                  $rslt.Result = 'CONVERTED SUCCESSFULLY'
+                  $rslt.ErrMsg = $null
+                }
+                Catch
+                {
+                  $rslt.File = $docFile.FullName
+                  $rslt.Result = 'CONVERSION FAILED'
+                  $rslt.ErrMsg = $Error[0].Exception.Message
+                }
+                $Word.Quit()
+                $Word = $Null
+              }
+              '.xls'
+              {
+                $Excel = New-Object -ComObject Excel.Application
+                $Excel.Visible = 0
+                $Excel.DisplayAlerts = 0
+                $xlFixedFormat = [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook
+                $path = $xlsFile.DirectoryName + '\' + $xlsFile.BaseName + '.xlsx'
+
+                Try
+                {
+                  $WorkBook = $Excel.Workbooks.Open($xlsFile.FullName, 0, $true)
+                  $WorkBook.SaveAs($path, $xlFixedFormat)
+                  $WorkBook.Close()
+                  $rslt.File = $xlsFile.FullName
+                  $rslt.Result = 'CONVERTED SUCCESSFULLY'
+                  $rslt.ErrMsg = $null
+                }
+                Catch
+                {
+                  $rslt.File = $xlsFile.FullName
+                  $rslt.Result = 'CONVERSION FAILED'
+                  $rslt.ErrMsg = $Error[0].Exception.Message
+                }
+                $Excel.Quit()
+                $Excel = $Null
+              }
+              '.ppt'
+              {
+                $PowerPoint = New-Object -ComObject PowerPoint.Application
+                $PowerPoint.DisplayAlerts = 1
+                $pptFixedFormat = [Microsoft.Office.Interop.PowerPoint.PpSaveAsFileType]::ppSaveAsOpenXMLPresentation
+                $path = $pptFile.DirectoryName + '\' + $pptFile.BaseName + '.pptx'
+
+                Try
+                {
+                  $Presentation = $PowerPoint.Presentations.Open($pptFile.FullName, `
+                    [Microsoft.Office.Core.MsoTriState]::msoTrue, `
+                    [Microsoft.Office.Core.MsoTriState]::msoFalse, `
+                  [Microsoft.Office.Core.MsoTriState]::msoFalse)
+                  $Presentation.SaveAs($path, $pptFixedFormat)
+                  $Presentation.Close()
+                  $rslt.File = $pptFile.FullName
+                  $rslt.Result = 'CONVERTED SUCCESSFULLY'
+                  $rslt.ErrMsg = $null
+                }
+                Catch [System.Runtime.InteropServices.COMException]
+                {
+                  $rslt.File = $pptFile.FullName
+                  $rslt.Result = 'ORIGINAL FILE CORRUPTED'
+                  $rslt.ErrMsg = $Error[0].Exception.Message
+                }
+                Catch
+                {
+                  $rslt.File = $pptFile.FullName
+                  $rslt.Result = 'CONVERSION FAILED'
+                  $rslt.ErrMsg = $Error[0].Exception.Message
+                }
+                $Powerpoint.Quit()
+                $PowerPoint = $Null
+              }
+              '.vsd'
+              {
+                $Visio = New-Object -ComObject Visio.Application # | Wait-Process -Timeout $maximumRuntimeSeconds -ErrorAction Stop
+                $Visio.Visible = 0
+                $Visio.AlertResponse = 1
+                $path = $vsdFile.DirectoryName + '\' + $vsdFile.BaseName + '.vsdx'
+
+                Try
+                {
+                  $VisioDiagram = $Visio.Documents.Open($vsdFile.FullName)
+                  $VisioDiagram.SaveAs($path)
+                  $VisioDiagram.Close()
+                  $rslt.File = $vsdFile.FullName
+                  $rslt.Result = 'CONVERTED SUCCESSFULLY'
+                  $rslt.ErrMsg = $null
+                }
+                Catch
+                {
+                  $rslt.File = $vsdFile.FullName
+                  $rslt.Result = 'CONVERSION FAILED'
+                  $rslt.ErrMsg = $Error[0].Exception.Message
+                }
+                $Visio.Quit()
+                $Visio = $Null
+              }
+            }
+            [gc]::Collect()
+            [gc]::WaitForPendingFinalizers()
+            Return $rslt
+        }
+    #endregion

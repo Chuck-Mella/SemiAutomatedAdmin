@@ -653,3 +653,455 @@ $null = [reflection.assembly]::loadwithpartialname("system.windows.Forms")
         #endregion
 #endregion
 # Stop-Transcript
+<#
+
+    #region - UserMig1.ps1.txt
+    #Generated Form Function
+    function Form1
+    {
+        $null = [reflection.assembly]::loadwithpartialname("System.Drawing")
+        $null = [reflection.assembly]::loadwithpartialname("System.Windows.Forms")
+
+        #region - Form Objects
+            $usrMain = New-Object System.Windows.Forms.Form
+                $usrMain.FormBorderStyle = 'FixedSingle'
+                $usrMain.ShowInTaskbar = $False
+                $usrMain.ControlBox = $False
+            $cbx_IAgree = New-Object System.Windows.Forms.CheckBox
+            $btn_Continue = New-Object System.Windows.Forms.Button
+            $lbl_Title = New-Object System.Windows.Forms.Label
+            $lbl_cbxExplain = New-Object System.Windows.Forms.Label
+            $rtxt_Explain = New-Object System.Windows.Forms.RichTextBox
+            $InitialFormWindowState = New-Object System.Windows.Forms.FormWindowState
+        #endregion
+
+        #region - Event Script Blocks
+            $btn_Continue_OnClick = { If ($cbx_IAgree.Checked -eq $true){ $usrMain.Close() } }
+
+            $handler_lbl_Title_Click = { <#TODO: Place custom script here#> }
+
+            $handler_Admin_Load = { <#TODO: Place custom script here#> }
+
+            $OnLoadForm_StateCorrection = {
+                #Correct the initial state of the form to prevent the .Net maximized form issue
+              $usrMain.WindowState = $InitialFormWindowState
+                }
+
+            $handler_rtxt_Explain_TextChanged = { <#TODO: Place custom script here#> }
+        #endregion
+
+        #region - Form Code
+            #region Kill Alt + F4
+                $usrMain_KeyDown = [System.Windows.Forms.KeyEventHandler]{
+                    #Event Argument: $_ = [System.Windows.Forms.KeyEventArgs]
+
+                    if ($_.Alt -eq $true -and $_.KeyCode -eq 'F4') {
+                        $script:altF4Pressed = $true;           
+                    }
+                }
+
+                $usrMain_FormClosing = [System.Windows.Forms.FormClosingEventHandler]{
+                    #Event Argument: $_ = [System.Windows.Forms.FormClosingEventArgs]
+
+                    if ($script:altF4Pressed)
+                    {
+                        if ($_.CloseReason -eq 'UserClosing') {
+                            $_.Cancel = $true
+                            $script:altF4Pressed = $false;
+                        }
+                    }
+                }
+
+                $usrMain.KeyPreview = $True
+                $usrMain.add_FormClosing($usrMain_FormClosing)
+                $usrMain.add_KeyDown($usrMain_KeyDown)
+            #endregion
+            #region Main Form
+                $usrMain.BackColor = [System.Drawing.Color]::FromArgb(255,239,200,200)
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 986 # 363
+                $System_Drawing_Size.Width = 1175  # 437
+                $usrMain.ClientSize = $System_Drawing_Size
+                $usrMain.DataBindings.DefaultDataSourceUpdateMode = 0
+                $usrMain.MaximizeBox = $False
+                $usrMain.MinimizeBox = $False
+                $usrMain.Name = "usrMain"
+                $usrMain.Text = "User Data Migration Tool"
+                $usrMain.add_Load($handler_Admin_Load)
+            #endregion
+            #region Labels
+                $lbl_Title.DataBindings.DefaultDataSourceUpdateMode = 0
+                $lbl_Title.Font = New-Object System.Drawing.Font("Microsoft Sans Serif",11.25,3,3,1)
+
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 449
+                $System_Drawing_Point.Y = 20
+                $lbl_Title.Location = $System_Drawing_Point
+                $lbl_Title.Name = "lbl_Title"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 31
+                $System_Drawing_Size.Width = 203
+                $lbl_Title.Size = $System_Drawing_Size
+                $lbl_Title.TabIndex = 4
+                $lbl_Title.Text = "Explanation"
+                $lbl_Title.add_Click($handler_lbl_Title_Click)
+
+                $usrMain.Controls.Add($lbl_Title)
+
+                $lbl_cbxExplain.DataBindings.DefaultDataSourceUpdateMode = 0
+
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 770
+                $System_Drawing_Point.Y = 860
+                $lbl_cbxExplain.Location = $System_Drawing_Point
+                $lbl_cbxExplain.Name = "lbl_cbxExplain"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 30
+                $System_Drawing_Size.Width = 234
+                $lbl_cbxExplain.Size = $System_Drawing_Size
+                $lbl_cbxExplain.TabIndex = 3
+                $lbl_cbxExplain.Text = "Check 'I Agree' to continue..."
+
+                $usrMain.Controls.Add($lbl_cbxExplain)
+            #endregion
+            #region Checkbox
+                $cbx_IAgree.DataBindings.DefaultDataSourceUpdateMode = 0
+
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 1000
+                $System_Drawing_Point.Y = 860
+                $cbx_IAgree.Location = $System_Drawing_Point
+                $cbx_IAgree.Name = "cbx_IAgree"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 24
+                $System_Drawing_Size.Width = 104
+                $cbx_IAgree.Size = $System_Drawing_Size
+                $cbx_IAgree.TabIndex = 0
+                $cbx_IAgree.Text = "I Agree"
+                $cbx_IAgree.UseVisualStyleBackColor = $True
+
+                $usrMain.Controls.Add($cbx_IAgree)
+            #endregion
+            #region RichTextBox
+                $rtxt_Explain.DataBindings.DefaultDataSourceUpdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 42
+                $System_Drawing_Point.Y = 57
+                $rtxt_Explain.Location = $System_Drawing_Point
+                $rtxt_Explain.Name = "rtxt_Explain"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 791 # 224
+                $System_Drawing_Size.Width = 1070  # 354
+                $rtxt_Explain.Size = $System_Drawing_Size
+                $rtxt_Explain.TabIndex = 2
+                $rtxt_Explain.Text = "Compared to the Windows copy command, Xcopy is much more efficient in copying files and directories. In addition, Xcopy has more options that make it more customizable and lets you control the file copy behavior.
+
+                            Benefits
+                            There are several benefits or advantages of using Xcopy that you will learn as you progress in this guide. But below are some of the benefits of using Xcopy.
+
+                            Faster copy operation on large sets of files and directories.
+                            Simplifies application deployment.
+                            Can replicate the source directory structure as is.
+                            Copy files while retaining the owner and access control list (ACL) information.
+                            Copy and overwrite read-only files.
+                            Can exclude files based on the file name, extension, or path.
+                            Can identify updated files, which is useful for differential backups.
+                            Integrate and use with scripts."
+                $rtxt_Explain.Font = [system.drawing.font]'Times New Roman, 24pt, style=Bold,Italic'
+
+                $rtxt_Explain.add_TextChanged($handler_rtxt_Explain_TextChanged)
+
+                $UsrMain.Controls.Add($rtxt_Explain)
+            #endregion
+            #region Button
+                $btn_Continue.DataBindings.DefaultDataSourceUpdateMode = 0
+
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 970
+                $System_Drawing_Point.Y = 900
+                $btn_Continue.Location = $System_Drawing_Point
+                $btn_Continue.Name = "btn_Continue"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 37
+                $System_Drawing_Size.Width = 105
+                $btn_Continue.Size = $System_Drawing_Size
+                $btn_Continue.TabIndex = 1
+                $btn_Continue.Text = "Continue"
+                $btn_Continue.UseVisualStyleBackColor = $True
+                $btn_Continue.add_Click($btn_Continue_OnClick)
+
+                $usrMain.Controls.Add($btn_Continue)
+            #endregion
+        #endregion
+
+        #Save the initial state of the form
+            $InitialFormWindowState = $usrMain.WindowState
+        #Init the OnLoad event to correct the initial state of the form
+            $usrMain.add_Load($OnLoadForm_StateCorrection)
+
+        #Show the Form
+            $null = $usrMain.ShowDialog()
+    }
+
+    #Call the Function
+    Form1
+
+    function Form2
+    {
+        $null = [reflection.assembly]::loadwithpartialname("System.Drawing")
+        $null = [reflection.assembly]::loadwithpartialname("System.Windows.Forms")
+
+        #region - Form Objects
+            $UsrProg = New-Object System.Windows.Forms.Form
+            $progressBar2 = New-Object System.Windows.Forms.ProgressBar
+            $label7 = New-Object System.Windows.Forms.Label
+            $InitialFormWindowState = New-Object System.Windows.Forms.FormWindowState
+        #endregion Generated Form Objects
+
+        #region - Event Script Blocks
+            $OnLoadForm_StateCorrection =
+            {
+                #Correct the initial state of the form to prevent the .Net maximized form issue
+                $UsrProg.WindowState = $InitialFormWindowState
+            }
+        #endregion
+
+        #region - Form Code
+            #region Kill Alt + F4
+                $UsrProg_KeyDown=[System.Windows.Forms.KeyEventHandler]{
+                    #Event Argument: $_ = [System.Windows.Forms.KeyEventArgs]
+
+                    if ($_.Alt -eq $true -and $_.KeyCode -eq 'F4') {
+                        $script:altF4Pressed = $true;           
+                    }
+                }
+
+                $UsrProg_FormClosing=[System.Windows.Forms.FormClosingEventHandler]{
+                    #Event Argument: $_ = [System.Windows.Forms.FormClosingEventArgs]
+
+                    if ($script:altF4Pressed)
+                    {
+                        if ($_.CloseReason -eq 'UserClosing') {
+                            $_.Cancel = $true
+                            $script:altF4Pressed = $false;
+                        }
+                    }
+                }
+
+                $UsrProg.KeyPreview = $True
+                $UsrProg.add_FormClosing($UsrProg_FormClosing)
+                $UsrProg.add_KeyDown($UsrProg_KeyDown)
+            #endregion
+            #region Main Form
+                $UsrProg.BackColor = [System.Drawing.Color]::FromArgb(255,240,240,240)
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $UsrProg.Location.X = 253
+                $UsrProg.Location.Y = 313
+                $System_Drawing_Size.Height = 200
+                $System_Drawing_Size.Width = 913
+                $UsrProg.ClientSize = $System_Drawing_Size
+                $UsrProg.DataBindings.DefaultDataSourceUpdateMode = 0
+                $UsrProg.MaximizeBox = $False
+                $UsrProg.MinimizeBox = $False
+                $UsrProg.Name = "UsrProg"
+                $UsrProg.Text = "Data Transfer Progress"
+                $UsrProg.add_Load($handler_Admin_Load)
+            #endregion
+            #region Progress Bar
+                $progressBar2.DataBindings.DefaultDataSourceUpdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 43
+                $System_Drawing_Point.Y = 73
+                $progressBar2.Location = $System_Drawing_Point
+                $progressBar2.Name = "progressBar2"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 65
+                $System_Drawing_Size.Width = ($UsrProg.Width - ($progressBar2.Location.X * 2.5))
+                $progressBar2.Size = $System_Drawing_Size
+                $progressBar2.TabIndex = 0
+                $progressBar2.Value = 62
+
+                $UsrProg.Controls.Add($progressBar2)
+            #endregion
+            #region Label
+                $label7.DataBindings.DefaultDataSourceUpdateMode = 0
+                $label7.Font = New-Object System.Drawing.Font("Microsoft Sans Serif",11.25,3,3,1)
+
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 44
+                $System_Drawing_Point.Y = 21
+                $label7.Location = $System_Drawing_Point
+                $label7.Name = "label7"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 31
+                $System_Drawing_Size.Width = 203
+                $label7.Size = $System_Drawing_Size
+                $label7.TabIndex = 11
+                $label7.Text = "Current Progress"
+                $label7.add_Click($handler_label7_Click)
+
+                $UsrProg.Controls.Add($label7)
+            #endregion
+        #endregion
+
+        #Save the initial state of the form
+            $InitialFormWindowState = $UsrProg.WindowState
+        #Init the OnLoad event to correct the initial state of the form
+            $UsrProg.add_Load($OnLoadForm_StateCorrection)
+
+        #Show the Form
+            $null = $UsrProg.ShowDialog()
+
+    }
+
+    Form2
+
+    function Form3
+    {
+        $null = [reflection.assembly]::loadwithpartialname("System.Drawing")
+        $null = [reflection.assembly]::loadwithpartialname("System.Windows.Forms")
+
+        #region - Form Objects
+            $UsrDone = New-Object System.Windows.Forms.Form
+            $btn_Close = New-Object System.Windows.Forms.Button
+            $rtxt_Summary = New-Object System.Windows.Forms.RichTextBox
+            $lbl_Title = New-Object System.Windows.Forms.Label
+            $InitialFormWindowState = New-Object System.Windows.Forms.FormWindowState
+        #endregion Generated Form Objects
+
+        #region - Event Script Blocks
+            $btn_Close_OnClick = { $usrDone.Close() }
+            $OnLoadForm_StateCorrection =
+            {
+                #Correct the initial state of the form to prevent the .Net maximized form issue
+                $UsrDone.WindowState = $InitialFormWindowState
+            }
+        #endregion
+
+        #region - Form Code
+            #region Kill Alt + F4
+                $UsrDone_KeyDown=[System.Windows.Forms.KeyEventHandler]{
+                    #Event Argument: $_ = [System.Windows.Forms.KeyEventArgs]
+
+                    if ($_.Alt -eq $true -and $_.KeyCode -eq 'F4') {
+                        $script:altF4Pressed = $true;           
+                    }
+                }
+
+                $UsrDone_FormClosing=[System.Windows.Forms.FormClosingEventHandler]{
+                    #Event Argument: $_ = [System.Windows.Forms.FormClosingEventArgs]
+
+                    if ($script:altF4Pressed)
+                    {
+                        if ($_.CloseReason -eq 'UserClosing') {
+                            $_.Cancel = $true
+                            $script:altF4Pressed = $false;
+                        }
+                    }
+                }
+
+                $UsrDone.KeyPreview = $True
+                $UsrDone.add_FormClosing($UsrDone_FormClosing)
+                $UsrDone.add_KeyDown($UsrDone_KeyDown)
+            #endregion
+            #region Main Form
+                $UsrDone.BackColor = [System.Drawing.Color]::FromArgb(255,240,240,240)
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $UsrDone.Location.X = 266
+                $UsrDone.Location.Y = 298
+                $System_Drawing_Size.Height = 750
+                $System_Drawing_Size.Width = 1109
+                $UsrDone.ClientSize = $System_Drawing_Size
+                $UsrDone.DataBindings.DefaultDataSourceUpdateMode = 0
+                $UsrDone.MaximizeBox = $False
+                $UsrDone.MinimizeBox = $False
+                $UsrDone.Name = "UsrDone"
+                $UsrDone.Text = "Job Summary"
+                $UsrDone.add_Load($handler_Admin_Load)
+            #endregion
+            #region Labels
+                $lbl_Title.DataBindings.DefaultDataSourceUpdateMode = 0
+                $lbl_Title.Font = New-Object System.Drawing.Font("Microsoft Sans Serif",11.25,3,3,1)
+
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 449
+                $System_Drawing_Point.Y = 20
+                $lbl_Title.Location = $System_Drawing_Point
+                $lbl_Title.Name = "lbl_Title"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 31
+                $System_Drawing_Size.Width = 203
+                $lbl_Title.Size = $System_Drawing_Size
+                $lbl_Title.TabIndex = 4
+                $lbl_Title.Text = "Summary"
+                $lbl_Title.add_Click($handler_lbl_Title_Click)
+
+                $usrDone.Controls.Add($lbl_Title)
+            #endregion
+            #region RichTextBox
+                $rtxt_Summary.DataBindings.DefaultDataSourceUpdateMode = 0
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 42
+                $System_Drawing_Point.Y = 57
+                $rtxt_Summary.Location = $System_Drawing_Point
+                $rtxt_Summary.Name = "rtxt_Summary"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 600 # 224
+                $System_Drawing_Size.Width = ($UsrDone.Width - ($rtxt_Summary.Location.X * 2.5))
+                $rtxt_Summary.Size = $System_Drawing_Size
+                $rtxt_Summary.TabIndex = 2
+                $rtxt_Summary.Text = "Compared to the Windows copy command, Xcopy is much more efficient in copying files and directories. In addition, Xcopy has more options that make it more customizable and lets you control the file copy behavior.
+
+                            Benefits
+                            There are several benefits or advantages of using Xcopy that you will learn as you progress in this guide. But below are some of the benefits of using Xcopy.
+
+                            Faster copy operation on large sets of files and directories.
+                            Simplifies application deployment.
+                            Can replicate the source directory structure as is.
+                            Copy files while retaining the owner and access control list (ACL) information.
+                            Copy and overwrite read-only files.
+                            Can exclude files based on the file name, extension, or path.
+                            Can identify updated files, which is useful for differential backups.
+                            Integrate and use with scripts."
+                $rtxt_Summary.Font = [system.drawing.font]'Times New Roman, 24pt, style=Bold,Italic'
+ 
+                $rtxt_Summary.add_TextChanged($handler_rtxt_Summary_TextChanged)
+
+                $UsrDone.Controls.Add($rtxt_Summary)
+            #endregion
+            #region Button
+                $btn_Close.DataBindings.DefaultDataSourceUpdateMode = 0
+
+                $System_Drawing_Point = New-Object System.Drawing.Point
+                $System_Drawing_Point.X = 970
+                $System_Drawing_Point.Y = 675
+                $btn_Close.Location = $System_Drawing_Point
+                $btn_Close.Name = "btn_Close"
+                $System_Drawing_Size = New-Object System.Drawing.Size
+                $System_Drawing_Size.Height = 37
+                $System_Drawing_Size.Width = 105
+                $btn_Close.Size = $System_Drawing_Size
+                $btn_Close.TabIndex = 0
+                $btn_Close.Text = "Close"
+                $btn_Close.UseVisualStyleBackColor = $True
+                $btn_Close.add_Click($btn_Close_OnClick)
+
+                $usrDone.Controls.Add($btn_Close)
+            #endregion
+        #endregion
+
+        #Save the initial state of the form
+            $InitialFormWindowState = $UsrDone.WindowState
+        #Init the OnLoad event to correct the initial state of the form
+            $UsrDone.add_Load($OnLoadForm_StateCorrection)
+
+        #Show the Form
+            $null = $UsrDone.ShowDialog()
+
+    }
+
+    Form3
+
+    #endregion
+
+#>

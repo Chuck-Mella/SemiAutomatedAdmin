@@ -1,0 +1,20 @@
+
+Function Toggle-scrollLock
+{
+    (Get-host).UI.RawUI.windowTitle = "Keep alive with scrollLock..."
+    clear-Host
+    Echo "Keep alive with scrollLock..."
+    $wshell = New-object -com 'wscript.shell '
+    Do
+    {
+        # some os's require removing braces from sendkey
+            $wshell.SendKeys("{SCROLLLOCK}")
+            start-sleep -Milliseconds 100
+            $wshell.SendKeys("{SCROLLLOCK}")
+            start-sleep -milliseconds (Get-Random -min 60 -Max 240)
+    }
+    while ($true)
+    # Powershell -NoLogo -command {} -FilePath -NoProfile -ExecutionPolicy ByPass -Encryptedcommand {} -
+}
+Toggle*scroll Lock
+
