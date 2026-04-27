@@ -56,7 +56,7 @@
                    As always, this script is provided 'as is' with no warantee implied. I strive towards
                    clean and safe code but you use this code at your own risk.
 
-                   2026-04-27 - Re-logic'd WMI to use CIM of PS host is V7 oR higher
+                   2026-04-27 - Re-logic'd WMI to use CIM of PS host is V7 or higher
    
                 .LINK
                    <blockquote class="wp-embedded-content" data-secret="8K2J4e8obw"><a href="https://semiautomatedadmin.wordpress.com/">Beware the Monsters from the $PID</a></blockquote><iframe class="wp-embedded-content" sandbox="allow-scripts" security="restricted" style="position: absolute; clip: rect(1px, 1px, 1px, 1px);" title=""Beware the Monsters from the $PID" - The Semi-Automated Admin" src="https://semiautomatedadmin.wordpress.com/embed/#?secret=LSklbSutvG#?secret=8K2J4e8obw" data-secret="8K2J4e8obw" width="600" height="338" frameborder="0" marginwidth="0" marginheight="0" scrolling="no"></iframe>
