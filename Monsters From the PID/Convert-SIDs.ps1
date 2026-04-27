@@ -55,6 +55,8 @@
                    Written by Chuck Mella (2014), semiautomatedadmin.wordpress.com
                    As always, this script is provided 'as is' with no warantee implied. I strive towards
                    clean and safe code but you use this code at your own risk.
+
+                   2026-04-27 - Re-logic'd WMI to use CIM of PS host is V7 oR higher
    
                 .LINK
                    <blockquote class="wp-embedded-content" data-secret="8K2J4e8obw"><a href="https://semiautomatedadmin.wordpress.com/">Beware the Monsters from the $PID</a></blockquote><iframe class="wp-embedded-content" sandbox="allow-scripts" security="restricted" style="position: absolute; clip: rect(1px, 1px, 1px, 1px);" title=""Beware the Monsters from the $PID" - The Semi-Automated Admin" src="https://semiautomatedadmin.wordpress.com/embed/#?secret=LSklbSutvG#?secret=8K2J4e8obw" data-secret="8K2J4e8obw" width="600" height="338" frameborder="0" marginwidth="0" marginheight="0" scrolling="no"></iframe>
@@ -64,6 +66,7 @@
                 [string]$srcAcct = $ENV:UserName,
                 [switch]$Script
             )
+            [INT]$vHost = (Get-Host).version.Major
             $sb_Convert = {
                 Param ($xltIn)
                 If ($xltIn -match "^S-1-"){ $Trg = 'SecurityIdentifier' } Else { $Trg = 'NTAccount' }
@@ -79,11 +82,15 @@
                 Catch { $XLout = "No Data" }
                 Return $XLout
                 }
-            $domPC = (GWMI Win32_ComputerSystem).partofdomain 
+            $domPC = If ($vHost -ge 7){ (GCIM Win32_ComputerSystem).partofdomain} Else{ (GWMI Win32_ComputerSystem).partofdomain } 
             If (!$domPC)
             {
                 If ($srcAcct -match "\\"){ $srcAcct = $srcAcct -replace  '^\w+[^\\]\\' } # Strip Machine Name
-                $locAccts = (GWMI -Class Win32_UserAccount -Filter  "LocalAccount='True'"),(GWMI -Class Win32_Group) | %{ $_ | Select Name,Domain,SID }
+                Switch ($vHost)
+                {
+                    5 { $locAccts = (GWMI -Class Win32_UserAccount -Filter  "LocalAccount='True'"),(GWMI -Class Win32_Group) | %{ $_ | Select Name,Domain,SID } }
+                    7 { $locAccts = (GCIM -Class Win32_UserAccount -Filter  "LocalAccount='True'") | %{ $_ | Select Name,Domain,SID } }
+                }
                 If ($srcAcct -match "^S-1-")
                 {
                     If ($locAccts.SID -contains $srcAcct){ $Rslt = ($locAccts | ?{$_.SID -match $srcAcct}).Name }
